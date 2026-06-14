@@ -1173,7 +1173,17 @@ function trigger() {
             await start_lapse();
         }
         else if (compare_version(FW_VERSION, "12.70") <= 0) {
-            await start_p2jb();
+            const result = await start_p2jb();
+
+            if (result === "test") {
+                send_notification(
+                    "Test finished"
+                    + "\n" + "Closing YT app"
+                );
+
+                await kill_youtube(5000);
+                return;
+            }
         }
         else {
             send_notification("[ERROR] Unsupported fw: " + FW_VERSION);

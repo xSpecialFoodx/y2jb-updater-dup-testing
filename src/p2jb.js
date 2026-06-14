@@ -17,6 +17,8 @@ async function start_p2jb() {
     try {
         const p2jb_version = "P2JB 2.3 (Y2JB port)";
 
+        const TEST = true;
+
         const PAGE_SIZE = 0x4000;
 
         const AF_UNIX = 1n;
@@ -31,6 +33,7 @@ async function start_p2jb() {
         const RTP_SET = 1n;
         const PRI_REALTIME = 2n;
 
+        const F_DUPFD = 0n;
         const F_SETFL = 4n;
         const O_NONBLOCK = 4n;
 
@@ -597,14 +600,59 @@ async function start_p2jb() {
             for (let i = 0; i < 360; i += 8) write64(S.rthdr_readback + BigInt(i), 0n);
         }
 
-        function setup_pipes_kernrw(S) {
+        function close_fd(fd) {
+            try {
+                if (fd !== null && fd !== undefined && fd >= 0 && fd !== 0xffffffffffffffffn) {
+                    syscall(SYSCALL.close, BigInt(fd));
+                }
+            } catch (_) {
+
+            }
+        }
+
+        async function setup_pipes_kernrw(S) {
             const [m_r, m_w] = create_pipe();
             const [v_r, v_w] = create_pipe();
             S.master_rfd = Number(m_r); S.master_wfd = Number(m_w);
-            S.victim_rfd = Number(v_r); S.victim_wfd = Number(v_w);
+            S.victim_rfd = Number(v_r); S.victim_wfd = Number(v_w); 
+
+            let tested_fdupfd = false;
+            let test_message = "F_DUPFD test";
+
             for (const fd of [S.master_rfd, S.master_wfd, S.victim_rfd, S.victim_wfd]) {
                 syscall(SYSCALL.fcntl, BigInt(fd), F_SETFL, O_NONBLOCK);
+
+                if (!tested_fdupfd) {
+                    tested_fdupfd = true;
+
+                    const min_fd = 0; // fd + 1;
+                    const new_fd = syscall(SYSCALL.fcntl, BigInt(fd), F_DUPFD, BigInt(min_fd));
+
+                    test_message += "\n" + "fd: " + toHex(BigInt(fd));
+
+                    if (new_fd === null || new_fd === undefined) {
+                        test_message += "\n" + "new_fd: N/A";
+
+                        test_message += "\n" + "Result: failed";
+                    } else {
+                        test_message += "\n" + "new_fd: " + toHex(BigInt(new_fd));
+
+                        if (
+                            new_fd === 0xffffffffffffffffn ||
+                            BigInt(new_fd) < BigInt(min_fd) ||
+                            BigInt(new_fd) === BigInt(fd)
+                        ) {
+                            test_message += "\n" + "Result: failed";
+                        } else {
+                            close_fd(new_fd);
+
+                            test_message += "\n" + "Result: success";
+                        }
+                    }
+                }
             }
+
+            return test_message;
         }
 
         function setup_workers(S) {
@@ -1569,6 +1617,12 @@ async function start_p2jb() {
 
         send_notification(p2jb_version + "\nport by matem6");
 
+        if (TEST) {
+            send_notification("test started");
+
+            await js_sleep(10000);
+        }
+
         {
             if (typeof load_aioshellcode !== "function") {
                 await ulog("FATAL: Y2JB >= 1.4 required");
@@ -1602,12 +1656,42 @@ async function start_p2jb() {
         setup_worker_sockets(S);
         setup_iov_buffers(S);
         setup_uio_buffers(S);
-        setup_pipes_kernrw(S);
+        const test_message = await setup_pipes_kernrw(S);
 
         await ulog(p2jb_version + " - port by matem6");
         if (typeof window.uiLog === 'function') {
             window.uiLog("pipes master=" + S.master_rfd + "," + S.master_wfd +
             " victim=" + S.victim_rfd + "," + S.victim_wfd);
+        }
+
+        if (TEST) {
+            close_fd(S.master_rfd);
+            close_fd(S.master_wfd);
+            close_fd(S.victim_rfd);
+            close_fd(S.victim_wfd);
+            close_fd(S.iov_sock_a);
+            close_fd(S.iov_sock_b);
+            close_fd(S.uio_sock_a);
+            close_fd(S.uio_sock_b);
+
+            S.master_rfd = -1;
+            S.master_wfd = -1;
+            S.victim_rfd = -1;
+            S.victim_wfd = -1;
+            S.iov_sock_a = -1;
+            S.iov_sock_b = -1;
+            S.uio_sock_a = -1;
+            S.uio_sock_b = -1;
+
+            send_notification(test_message);
+
+            await js_sleep(10000);
+
+            send_notification("test finished");
+
+            await js_sleep(10000);
+
+            return "test";
         }
 
         const leak_nw = LEAK_CORES.length;

@@ -696,17 +696,16 @@
 
             let method_found = false;
 
-            const sv = malloc(8);
-
-            const socketpair_protocol = 0n;
-            const socketpair_ret = syscall(SYSCALL.socketpair, AF_UNIX, SOCK_STREAM, socketpair_protocol, sv);
-
-            if (socketpair_ret === null || socketpair_ret === undefined) {
-                msg += "\n" + "socketpair_ret: N/A";
+            if (fd === null || fd === undefined) {
+                msg += "\n" + "fd: N/A";
             } else {
-                msg += "\n" + "socketpair_ret: " + toHex(BigInt(socketpair_ret));
+                msg += "\n" + "fd: " + toHex(BigInt(fd));
 
-                if (BigInt(socketpair_ret) === 0n) {
+                if (
+                    BigInt(fd) !== 0xffffffffn &&
+                    BigInt(fd) !== 0xffffffffffffffffn &&
+                    BigInt(fd) >= 0n
+                ) {
                     method_found = true;
                 }
             }
@@ -718,42 +717,55 @@
             {
                 method_found = false;
 
-                const s0_raw = read32(sv);
+                const sv = malloc(8);
 
-                if (s0_raw === null || s0_raw === undefined) {
-                    msg += "\n" + "s0: N/A";
+                const socketpair_protocol = 0n;
+                const socketpair_ret = syscall(SYSCALL.socketpair, AF_UNIX, SOCK_STREAM, socketpair_protocol, sv);
+
+                if (socketpair_ret === null || socketpair_ret === undefined) {
+                    msg += "\n" + "socketpair_ret: N/A";
                 } else {
-                    s0 = Number(s0_raw);
+                    msg += "\n" + "socketpair_ret: " + toHex(BigInt(socketpair_ret));
 
-                    msg += "\n" + "s0: " + toHex(BigInt(s0));
+                    if (BigInt(socketpair_ret) === 0n) {
+                        const s0_raw = read32(sv);
 
-                    if (
-                        BigInt(s0) !== 0xffffffffn &&
-                        BigInt(s0) >= 0n
-                    ) {
-                        method_found = true;
-                    }
-                }
+                        if (s0_raw === null || s0_raw === undefined) {
+                            msg += "\n" + "s0: N/A";
+                        } else {
+                            s0 = Number(s0_raw);
 
-                if (method_found)
-                {
-                    method_found = false;
+                            msg += "\n" + "s0: " + toHex(BigInt(s0));
 
-                    const s1_raw = read32(sv + 4n);
+                            if (
+                                BigInt(s0) !== 0xffffffffn &&
+                                BigInt(s0) >= 0n
+                            ) {
+                                method_found = true;
+                            }
+                        }
 
-                    if (s1_raw === null || s1_raw === undefined) {
-                        msg += "\n" + "s1: N/A";
-                    } else {
-                        s1 = Number(s1_raw);
+                        if (method_found)
+                        {
+                            method_found = false;
 
-                        msg += "\n" + "s1: " + toHex(BigInt(s1));
+                            const s1_raw = read32(sv + 4n);
 
-                        if (
-                            BigInt(s1) !== 0xffffffffn &&
-                            BigInt(s1) >= 0n &&
-                            BigInt(s0) !== BigInt(s1)
-                        ) {
-                            method_found = true;
+                            if (s1_raw === null || s1_raw === undefined) {
+                                msg += "\n" + "s1: N/A";
+                            } else {
+                                s1 = Number(s1_raw);
+
+                                msg += "\n" + "s1: " + toHex(BigInt(s1));
+
+                                if (
+                                    BigInt(s1) !== 0xffffffffn &&
+                                    BigInt(s1) >= 0n &&
+                                    BigInt(s0) !== BigInt(s1)
+                                ) {
+                                    method_found = true;
+                                }
+                            }
                         }
                     }
                 }

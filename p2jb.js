@@ -58,9 +58,7 @@
         const RTP_SET = 1n;
         const PRI_REALTIME = 2n;
 
-        const F_DUPFD = 0n;
         const F_GETFD = 1n;
-        const F_SETFD = 2n;
         const F_GETFL = 3n;
         const F_SETFL = 4n;
         const O_NONBLOCK = 4n;
@@ -96,7 +94,6 @@
             readv: 0x78n,
             writev: 0x79n,
             setrlimit: 0xC3n,
-            dup2: 0x5An,
             sendmsg: 0x1Cn,
         };
         for (const k in SYSCALL_EXTRA) {
@@ -670,11 +667,21 @@
                     BigInt(fd) !== 0xffffffffn &&
                     BigInt(fd) !== 0xffffffffffffffffn
                 ) {
-                    syscall(SYSCALL.close, BigInt(fd));
+                    const close_ret = syscall(SYSCALL.close, BigInt(fd));
+
+                    if (
+                        close_ret !== null &&
+                        close_ret !== undefined &&
+                        BigInt(close_ret) === 0n
+                    ) {
+                        return 1;
+                    }
                 }
             } catch (_) {
 
             }
+
+            return 0;
         }
 
         async function send_notification_split(message, max_lines, delay_ms) {
@@ -1166,29 +1173,78 @@
                 }
             }
 
-            if (
-                s0 !== null &&
-                BigInt(s0) !== 0xffffffffn &&
-                BigInt(s0) >= 0n
-            ) {
-                close_fd(s0);
+            if (method_found)
+            {
+                method_found = false;
+
+                let closed_s0 = false;
+                let closed_s1 = false;
+                let closed_recvmsg_msg_control_cmsg_fd = false;
+
+                if (close_fd(s0))
+                {
+                    closed_s0 = true;
+
+                    msg += "\n" + "closed s0 successfully";
+                }
+                else {
+                    msg += "\n" + "failed to close s0";
+                }
+
+                if (close_fd(s1))
+                {
+                    closed_s1 = true;
+
+                    msg += "\n" + "closed s1 successfully";
+                }
+                else
+                {
+                    msg += "\n" + "failed to close s1";
+                }
+
+                if (close_fd(Number(recvmsg_msg_control_cmsg_fd)))
+                {
+                    closed_recvmsg_msg_control_cmsg_fd = true;
+
+                    msg += "\n" + "closed recvmsg_msg_control_cmsg_fd successfully";
+                }
+                else
+                {
+                    msg += "\n" + "failed to close recvmsg_msg_control_cmsg_fd";
+                }
+
+                if (closed_s0 && closed_s1 && closed_recvmsg_msg_control_cmsg_fd)
+                {
+                    method_found = true;
+                }
+            }
+            else
+            {
+                if (
+                    s0 !== null &&
+                    BigInt(s0) !== 0xffffffffn &&
+                    BigInt(s0) >= 0n
+                ) {
+                    close_fd(s0);
+                }
+
+                if (
+                    s1 !== null &&
+                    BigInt(s1) !== 0xffffffffn &&
+                    BigInt(s1) >= 0n
+                ) {
+                    close_fd(s1);
+                }
+
+                if (
+                    recvmsg_msg_control_cmsg_fd !== null &&
+                    BigInt(recvmsg_msg_control_cmsg_fd) !== 0xffffffffn &&
+                    BigInt(recvmsg_msg_control_cmsg_fd) >= 0n
+                ) {
+                    close_fd(Number(recvmsg_msg_control_cmsg_fd));
+                }
             }
 
-            if (
-                s1 !== null &&
-                BigInt(s1) !== 0xffffffffn &&
-                BigInt(s1) >= 0n
-            ) {
-                close_fd(s1);
-            }
-
-            if (
-                recvmsg_msg_control_cmsg_fd !== null &&
-                BigInt(recvmsg_msg_control_cmsg_fd) !== 0xffffffffn &&
-                BigInt(recvmsg_msg_control_cmsg_fd) >= 0n
-            ) {
-                close_fd(Number(recvmsg_msg_control_cmsg_fd));
-            }
 
             if (method_found)
             {
@@ -2924,14 +2980,14 @@
             " victim=" + S.victim_rfd + "," + S.victim_wfd);
 
         if (TEST) {
-            close_fd(S.master_rfd);
-            close_fd(S.master_wfd);
-            close_fd(S.victim_rfd);
-            close_fd(S.victim_wfd);
-            close_fd(S.iov_sock_a);
-            close_fd(S.iov_sock_b);
-            close_fd(S.uio_sock_a);
-            close_fd(S.uio_sock_b);
+            close_fd(S.master_rfd);  // ignore return value
+            close_fd(S.master_wfd);  // ignore return value
+            close_fd(S.victim_rfd);  // ignore return value
+            close_fd(S.victim_wfd);  // ignore return value
+            close_fd(S.iov_sock_a);  // ignore return value
+            close_fd(S.iov_sock_b);  // ignore return value
+            close_fd(S.uio_sock_a);  // ignore return value
+            close_fd(S.uio_sock_b);  // ignore return value
 
             S.master_rfd = -1;
             S.master_wfd = -1;

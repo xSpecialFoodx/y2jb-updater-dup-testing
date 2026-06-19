@@ -1605,10 +1605,48 @@
                 test_log_arr.push("original fd:");
                 test_log_arr.push(toHex(fd64));
 
+                test_log_arr.push("first socket:");
+                test_log_arr.push(toHex(sa64));
+
+                test_log_arr.push("second socket:");
+                test_log_arr.push(toHex(sb64));
+
                 test_log_arr.push("duplicated fd:");
                 test_log_arr.push(toHex(dup_fd64));
             } else {
                 test_log_arr.push("failure");
+
+                test_log_arr.push("original fd:");
+
+                if (validate_fd64(fd64) && validate_fd32(fd32)) {
+                    test_log_arr.push(toHex(fd64));
+                } else {
+                    test_log_arr.push("N/A");
+                }
+
+                test_log_arr.push("first socket:");
+
+                if (validate_fd32(sa32)) {
+                    test_log_arr.push(toHex(sa64));
+                } else {
+                    test_log_arr.push("N/A");
+                }
+
+                test_log_arr.push("second socket:");
+
+                if (validate_fd32(sb32)) {
+                    test_log_arr.push(toHex(sb64));
+                } else {
+                    test_log_arr.push("N/A");
+                }
+
+                test_log_arr.push("duplicated fd:");
+
+                if (validate_fd32(dup_fd32)) {
+                    test_log_arr.push(toHex(dup_fd64));
+                } else {
+                    test_log_arr.push("N/A");
+                }
             }
 
             // cleanup

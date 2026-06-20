@@ -940,7 +940,7 @@
             }
 
             const payload = 0x12;  // arbitrary, sent and received as normal data
-            const payload_size = 1;  // 1 byte (can be 1/2/4/8 bytes)
+            const payload_size = 1;  // 1 byte (can be 8/4/2/1 bytes)
 
             let dup_fd64 = null;
             let dup_fd32 = null;

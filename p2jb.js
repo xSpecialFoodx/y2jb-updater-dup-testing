@@ -1318,12 +1318,12 @@
                 } = {}
             ) {
                 if (this.started) {
-                    return true;
+                    return 0;
                 }
 
                 let started = false;
 
-                let error_found = false;
+                let error_number = 0;
 
                 // creating a socketpair
 
@@ -1362,7 +1362,7 @@
                 );
 
                 if (socketpair_ret64 !== 0n) {
-                    error_found = true;
+                    error_number = 1;
                 } else {
                     // returns a BigInt holding a 32-bit value
                     const sa64 = read_addr(socketpair_sv + BigInt(socketpair_sv_sa_offset), socketpair_sv_sa_size);
@@ -1373,11 +1373,11 @@
                     const sb32 = Number(sb64);
 
                     if (sb32 === sa32) {
-                        error_found = true;
+                        error_number = 2;
                     } else if (validate_sa && !validate_fd32(sa32)) {
-                        error_found = true;
+                        error_number = 3;
                     } else if (validate_sb && !validate_fd32(sb32)) {
-                        error_found = true;
+                        error_number = 4;
                     } else {
                         if (set_sa_nonblock) {
                             // F_SETFL returns 0xffffffffffffffffn in this environment, so it is skipped
@@ -1402,12 +1402,12 @@
                                 );
 
                                 if (sa64_fcntl_setfl_ret64 !== 0n) {
-                                    error_found = true;
+                                    error_number = 5;
                                 }
                             }
                         }
 
-                        if (!error_found && set_sb_nonblock) {
+                        if (error_number === 0 && set_sb_nonblock) {
                             // F_SETFL returns 0xffffffffffffffffn in this environment, so it is skipped
                             // Not necessary anyway, because recvmsg is called only after sendmsg succeeds
 
@@ -1430,13 +1430,13 @@
                                 );
 
                                 if (sb64_fcntl_setfl_ret64 !== 0n) {
-                                    error_found = true;
+                                    error_number = 6;
                                 }
                             }
                         }
                     }
 
-                    if (!error_found) {
+                    if (error_number === 0) {
                         this.sa64 = sa64;
                         this.sa32 = sa32;
 
@@ -1451,13 +1451,13 @@
                     }
                 }
 
-                if (!error_found) {
+                if (error_number === 0) {
                     started = true;
                 }
 
                 this.started = started;
 
-                return started;
+                return error_number;
             }
 
             dup(
@@ -1487,10 +1487,10 @@
                     , stop_on_error = true
                 } = {}
             ) {
-                let error_found = false;
+                let error_number = 0;
 
                 if (!this.started) {
-                    error_found = true;
+                    error_number = 1;
                 }
 
                 let fd64 = null;
@@ -1498,23 +1498,23 @@
 
                 // validating fd
 
-                if (!error_found) {
+                if (error_number === 0) {
                     try {
                         fd64 = BigInt(fd);
                     } catch {
-                        error_found = true;
+                        error_number = 2;
                     }
 
-                    if (!error_found) {
+                    if (error_number === 0) {
                         if (validate_fd && !validate_fd64(fd64)) {
-                            error_found = true;
+                            error_number = 3;
                         } else {
                             fd32 = Number(fd64);
 
                             // not necessary
                             //
                             // if (validate_fd && !validate_fd32(fd32)) {
-                            //     error_found = true;
+                            //     error_number = 4;
                             // }
                         }
                     }
@@ -1525,7 +1525,7 @@
 
                 // sending and receiving the payload as normal data and the fd through SCM_RIGHTS control data using sendmsg and recvmsg
 
-                if (!error_found) {
+                if (error_number === 0) {
                     const sa64 = this.sa64;
 
                     // sending the data
@@ -1644,7 +1644,7 @@
                     const sendmsg_ret64 = syscall(SYSCALL.sendmsg, sendmsg_s, sendmsg_msg, sendmsg_flags);
 
                     if (sendmsg_ret64 !== sendmsg_msg_iov_len) {
-                        error_found = true;
+                        error_number = 5;
                     } else {
                         const sb64 = this.sb64;
 
@@ -1812,7 +1812,7 @@
                         const recvmsg_ret64 = syscall(SYSCALL.recvmsg, recvmsg_s, recvmsg_msg, recvmsg_flags);
 
                         if (recvmsg_ret64 !== recvmsg_msg_iov_len) {
-                            error_found = true;
+                            error_number = 6;
                         } else {
                             // reading and validating the received data
 
@@ -1829,12 +1829,12 @@
                             dup_fd32 = received_msg_control_cmsg_data32;
 
                             if (dup_fd32 === fd32) {
-                                error_found = true;
+                                error_number = 7;
                             } else if (validate_dup_fd && !validate_fd32(dup_fd32)) {
-                                error_found = true;
+                                error_number = 8;
                             }
 
-                            if (!error_found && validate_received_msg_iov_base_data) {
+                            if (error_number === 0 && validate_received_msg_iov_base_data) {
                                 const sent_msg_iov_base_data32 = sendmsg_msg_iov_base_data;
                                 const received_msg_iov_base_data64 = (
                                     read_addr(
@@ -1846,11 +1846,11 @@
                                 const received_msg_iov_base_data32 = Number(received_msg_iov_base_data64);
 
                                 if (received_msg_iov_base_data32 !== sent_msg_iov_base_data32) {
-                                    error_found = true;
+                                    error_number = 9;
                                 }
                             }
 
-                            if (!error_found && validate_received_msg_control_cmsg_len) {
+                            if (error_number === 0 && validate_received_msg_control_cmsg_len) {
                                 const sent_msg_control_cmsg_len32 = sendmsg_msg_control_cmsg_len;
                                 const received_msg_control_cmsg_len64 = (
                                     read_addr(
@@ -1862,11 +1862,11 @@
                                 const received_msg_control_cmsg_len32 = Number(received_msg_control_cmsg_len64);
 
                                 if (received_msg_control_cmsg_len32 !== sent_msg_control_cmsg_len32) {
-                                    error_found = true;
+                                    error_number = 10;
                                 }
                             }
 
-                            if (!error_found && validate_received_msg_control_cmsg_level) {
+                            if (error_number === 0 && validate_received_msg_control_cmsg_level) {
                                 const sent_msg_control_cmsg_level32 = sendmsg_msg_control_cmsg_level;
                                 const received_msg_control_cmsg_level64 = (
                                     read_addr(
@@ -1878,11 +1878,11 @@
                                 const received_msg_control_cmsg_level32 = Number(received_msg_control_cmsg_level64);
 
                                 if (received_msg_control_cmsg_level32 !== sent_msg_control_cmsg_level32) {
-                                    error_found = true;
+                                    error_number = 11;
                                 }
                             }
 
-                            if (!error_found && validate_received_msg_control_cmsg_type) {
+                            if (error_number === 0 && validate_received_msg_control_cmsg_type) {
                                 const sent_msg_control_cmsg_type32 = sendmsg_msg_control_cmsg_type;
                                 const received_msg_control_cmsg_type64 = (
                                     read_addr(
@@ -1894,11 +1894,11 @@
                                 const received_msg_control_cmsg_type32 = Number(received_msg_control_cmsg_type64);
 
                                 if (received_msg_control_cmsg_type32 !== sent_msg_control_cmsg_type32) {
-                                    error_found = true;
+                                    error_number = 12;
                                 }
                             }
 
-                            if (!error_found && validate_received_msg_namelen) {
+                            if (error_number === 0 && validate_received_msg_namelen) {
                                 const recvmsg_msg_namelen32 = recvmsg_msg_namelen;
                                 const received_msg_namelen64 = (
                                     read_addr(
@@ -1910,11 +1910,11 @@
                                 const received_msg_namelen32 = Number(received_msg_namelen64);
 
                                 if (received_msg_namelen32 !== recvmsg_msg_namelen32) {
-                                    error_found = true;
+                                    error_number = 13;
                                 }
                             }
 
-                            if (!error_found && validate_received_msg_controllen) {
+                            if (error_number === 0 && validate_received_msg_controllen) {
                                 const recvmsg_msg_controllen32 = recvmsg_msg_controllen;
                                 const received_msg_controllen64 = (
                                     read_addr(
@@ -1926,11 +1926,11 @@
                                 const received_msg_controllen32 = Number(received_msg_controllen64);
 
                                 if (received_msg_controllen32 !== recvmsg_msg_controllen32) {
-                                    error_found = true;
+                                    error_number = 14;
                                 }
                             }
 
-                            if (!error_found && validate_received_msg_flags) {
+                            if (error_number === 0 && validate_received_msg_flags) {
                                 const recvmsg_msg_flags32 = recvmsg_msg_flags;
                                 const received_msg_flags64 = (
                                     read_addr(
@@ -1942,11 +1942,11 @@
                                 const received_msg_flags32 = Number(received_msg_flags64);
 
                                 if (received_msg_flags32 !== recvmsg_msg_flags32) {
-                                    error_found = true;
+                                    error_number = 15;
                                 }
                             }
 
-                            if (!error_found && validate_fd_with_fcntl_getfd) {
+                            if (error_number === 0 && validate_fd_with_fcntl_getfd) {
                                 // F_GETFD seems unsupported/unreliable here, but F_GETFL works
 
                                 if (false) {
@@ -1968,12 +1968,12 @@
                                     );
 
                                     if (fd64_fcntl_getfd_ret64 === 0xffffffffffffffffn) {
-                                        error_found = true;
+                                        error_number = 16;
                                     }
                                 }
                             }
 
-                            if (!error_found && validate_dup_fd_with_fcntl_getfd) {
+                            if (error_number === 0 && validate_dup_fd_with_fcntl_getfd) {
                                 // F_GETFD seems unsupported/unreliable here, but F_GETFL works
 
                                 if (false) {
@@ -1995,12 +1995,12 @@
                                     );
 
                                     if (dup_fd64_fcntl_getfd_ret64 === 0xffffffffffffffffn) {
-                                        error_found = true;
+                                        error_number = 17;
                                     }
                                 }
                             }
 
-                            if (!error_found && compare_fd_and_dup_fd_with_fcntl_getfl) {
+                            if (error_number === 0 && compare_fd_and_dup_fd_with_fcntl_getfl) {
                                 // F_GETFL matching verifies the received fd is valid and has matching file status flags
 
                                 // https://man.freebsd.org/cgi/man.cgi?query=fcntl
@@ -2021,7 +2021,7 @@
                                 );
 
                                 if (fd64_fcntl_getfl_ret64 === 0xffffffffffffffffn) {
-                                    error_found = true;
+                                    error_number = 18;
                                 } else {
                                     // https://man.freebsd.org/cgi/man.cgi?query=fcntl
                                     //
@@ -2040,8 +2040,10 @@
                                         )
                                     );
 
-                                    if (dup_fd64_fcntl_getfl_ret64 !== fd64_fcntl_getfl_ret64) {
-                                        error_found = true;
+                                    if (dup_fd64_fcntl_getfl_ret64 === 0xffffffffffffffffn) {
+                                        error_number = 19;
+                                    } else if (dup_fd64_fcntl_getfl_ret64 !== fd64_fcntl_getfl_ret64) {
+                                        error_number = 20;
                                     }
                                 }
                             }
@@ -2049,7 +2051,7 @@
                     }
                 }
 
-                if (error_found) {
+                if (error_number !== 0) {
                     if (dup_fd32 === fd32) {
                         dup_fd64 = null;
                         dup_fd32 = null;
@@ -2065,7 +2067,7 @@
                     }
                 }
 
-                return [error_found, dup_fd64, dup_fd32];
+                return [error_number, dup_fd64, dup_fd32];
             }
 
             stop() {
@@ -2118,14 +2120,13 @@
 
                     const duper = new fd_duper();
 
-                    const started_a = duper.start();
+                    const start_error_number_a = duper.start();
 
-                    const [error_found_a, dup_fd64_a, dup_fd32_a] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
+                    const [dup_error_number_a, dup_fd64_a, dup_fd32_a] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
 
-                    const started_b = duper.start();
-                    // const started_b = !error_found_a || duper.start();  // the same initially
+                    const start_error_number_b = duper.start();
 
-                    const [error_found_b, dup_fd64_b, dup_fd32_b] = duper.dup(fd64);
+                    const [dup_error_number_b, dup_fd64_b, dup_fd32_b] = duper.dup(fd64);
 
                     duper.stop();
 
@@ -2138,25 +2139,17 @@
                     test_log_arr.push("fd64:");
                     test_log_arr.push(toHex(fd64));
 
-                    // logging started_a
+                    // logging start_error_number_a
 
-                    test_log_arr.push("started_a:");
+                    test_log_arr.push("start_error_number_a:");
+                    test_log_arr.push(start_error_number_a);
 
-                    if (started_a) {
-                        test_log_arr.push("true");
-                    } else {
-                        test_log_arr.push("false");
-                    }
+                    // logging dup_error_number_a
 
-                    // logging error_found_a
+                    test_log_arr.push("dup_error_number_a:");
+                    test_log_arr.push(dup_error_number_a);
 
-                    test_log_arr.push("error_found_a:");
-
-                    if (error_found_a) {
-                        test_log_arr.push("true");
-                    } else {
-                        test_log_arr.push("false");
-
+                    if (dup_error_number_a === 0) {
                         // logging dup_fd64_a
 
                         test_log_arr.push("dup_fd64_a:");
@@ -2171,25 +2164,17 @@
                         }
                     }
 
-                    // logging started_b
+                    // logging start_error_number_b
 
-                    test_log_arr.push("started_b:");
+                    test_log_arr.push("start_error_number_b:");
+                    test_log_arr.push(start_error_number_b);
 
-                    if (started_b) {
-                        test_log_arr.push("true");
-                    } else {
-                        test_log_arr.push("false");
-                    }
+                    // logging dup_error_number_b
 
-                    // logging error_found_b
+                    test_log_arr.push("dup_error_number_b:");
+                    test_log_arr.push(dup_error_number_b);
 
-                    test_log_arr.push("error_found_b:");
-
-                    if (error_found_b) {
-                        test_log_arr.push("true");
-                    } else {
-                        test_log_arr.push("false");
-
+                    if (dup_error_number_b === 0) {
                         // logging dup_fd64_b
 
                         test_log_arr.push("dup_fd64_b:");
@@ -2204,7 +2189,7 @@
                         }
                     }
 
-                    if (!error_found_a && !error_found_b) {
+                    if (dup_error_number_a === 0 && dup_error_number_b === 0) {
                         const diff_dup_fds = dup_fd64_b !== dup_fd64_a;
 
                         // logging diff_dup_fds

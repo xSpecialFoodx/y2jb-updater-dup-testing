@@ -2111,18 +2111,19 @@
 
                 syscall(SYSCALL.fcntl, fd64, F_SETFL, O_NONBLOCK);
 
-                if (!tested_scm_rights_dup) {
+                if (TEST && !tested_scm_rights_dup) {
                     tested_scm_rights_dup = true;
 
                     // making 2 duplications of the fd
 
                     const duper = new fd_duper();
 
-                    duper.start();  // ignore return value
+                    const started_a = duper.start();
 
                     const [error_found_a, dup_fd64_a, dup_fd32_a] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
 
-                    duper.start();  // ignore return value
+                    const started_b = duper.start();
+                    // const started_b = !error_found_a || duper.start();  // the same initially
 
                     const [error_found_b, dup_fd64_b, dup_fd32_b] = duper.dup(fd64);
 
@@ -2137,49 +2138,83 @@
                     test_log_arr.push("fd64:");
                     test_log_arr.push(toHex(fd64));
 
-                    // logging error_found_a
+                    // logging started_a
 
-                    test_log_arr.push("error_found_a:");
+                    test_log_arr.push("started_a:");
 
-                    if (error_found_a) {
-                        test_log_arr.push("true");
-                    } else {
+                    if (!started_a) {
                         test_log_arr.push("false");
+                    } else {
+                        test_log_arr.push("true");
 
-                        // logging dup_fd64_a
+                        // logging error_found_a
 
-                        test_log_arr.push("dup_fd64_a:");
-                        test_log_arr.push(toHex(dup_fd64_a));
+                        test_log_arr.push("error_found_a:");
 
-                        test_log_arr.push("closing dup_fd32_a:");
-
-                        if (close_fd32(dup_fd32_a)) {
-                            test_log_arr.push("success");
+                        if (error_found_a) {
+                            test_log_arr.push("true");
                         } else {
-                            test_log_arr.push("failure");
+                            test_log_arr.push("false");
+
+                            // logging dup_fd64_a
+
+                            test_log_arr.push("dup_fd64_a:");
+                            test_log_arr.push(toHex(dup_fd64_a));
+
+                            test_log_arr.push("closing dup_fd32_a:");
+
+                            if (close_fd32(dup_fd32_a)) {
+                                test_log_arr.push("success");
+                            } else {
+                                test_log_arr.push("failure");
+                            }
                         }
                     }
 
-                    // logging error_found_b
+                    // logging started_b
 
-                    test_log_arr.push("error_found_b:");
+                    test_log_arr.push("started_b:");
 
-                    if (error_found_b) {
-                        test_log_arr.push("true");
-                    } else {
+                    if (!started_b) {
                         test_log_arr.push("false");
+                    } else {
+                        test_log_arr.push("true");
 
-                        // logging dup_fd64_b
+                        // logging error_found_b
 
-                        test_log_arr.push("dup_fd64_b:");
-                        test_log_arr.push(toHex(dup_fd64_b));
+                        test_log_arr.push("error_found_b:");
 
-                        test_log_arr.push("closing dup_fd32_b:");
-
-                        if (close_fd32(dup_fd32_b)) {
-                            test_log_arr.push("success");
+                        if (error_found_b) {
+                            test_log_arr.push("true");
                         } else {
-                            test_log_arr.push("failure");
+                            test_log_arr.push("false");
+
+                            // logging dup_fd64_b
+
+                            test_log_arr.push("dup_fd64_b:");
+                            test_log_arr.push(toHex(dup_fd64_b));
+
+                            test_log_arr.push("closing dup_fd32_b:");
+
+                            if (close_fd32(dup_fd32_b)) {
+                                test_log_arr.push("success");
+                            } else {
+                                test_log_arr.push("failure");
+                            }
+                        }
+                    }
+
+                    if (!error_found_a && !error_found_b) {
+                        const diff_dup_fds = dup_fd64_b !== dup_fd64_a;
+
+                        // logging diff_dup_fds
+
+                        test_log_arr.push("diff_dup_fds:");
+
+                        if (diff_dup_fds) {
+                            test_log_arr.push("true");
+                        } else {
+                            test_log_arr.push("false");
                         }
                     }
 

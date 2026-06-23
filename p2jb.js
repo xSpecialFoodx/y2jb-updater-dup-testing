@@ -2107,7 +2107,9 @@
             let test_log = "empty test log";
 
             for (const fd of [S.master_rfd, S.master_wfd, S.victim_rfd, S.victim_wfd]) {
-                syscall(SYSCALL.fcntl, BigInt(fd), F_SETFL, O_NONBLOCK);
+                const fd64 = BigInt(fd);
+
+                syscall(SYSCALL.fcntl, fd64, F_SETFL, O_NONBLOCK);
 
                 if (!tested_scm_rights_dup) {
                     tested_scm_rights_dup = true;
@@ -2118,11 +2120,11 @@
 
                     duper.start();  // ignore return value
 
-                    const [error_found_a, dup_fd64_a, dup_fd32_a] = duper.dup(fd, {validate_dup_fd_with_fcntl_getfd: false});
+                    const [error_found_a, dup_fd64_a, dup_fd32_a] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
 
                     duper.start();  // ignore return value
 
-                    const [error_found_b, dup_fd64_b, dup_fd32_b] = duper.dup(fd);
+                    const [error_found_b, dup_fd64_b, dup_fd32_b] = duper.dup(fd64);
 
                     duper.stop();
 
@@ -2130,12 +2132,21 @@
 
                     const test_log_arr = [];
 
+                    // logging fd64
+
+                    test_log_arr.push("fd64:");
+                    test_log_arr.push(toHex(fd64));
+
+                    // logging error_found_a
+
                     test_log_arr.push("error_found_a:");
 
                     if (error_found_a) {
                         test_log_arr.push("true");
                     } else {
                         test_log_arr.push("false");
+
+                        // logging dup_fd64_a
 
                         test_log_arr.push("dup_fd64_a:");
                         test_log_arr.push(toHex(dup_fd64_a));
@@ -2149,12 +2160,16 @@
                         }
                     }
 
+                    // logging error_found_b
+
                     test_log_arr.push("error_found_b:");
 
                     if (error_found_b) {
                         test_log_arr.push("true");
                     } else {
                         test_log_arr.push("false");
+
+                        // logging dup_fd64_b
 
                         test_log_arr.push("dup_fd64_b:");
                         test_log_arr.push(toHex(dup_fd64_b));

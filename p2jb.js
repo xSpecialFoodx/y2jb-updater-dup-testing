@@ -716,7 +716,7 @@
             }
         }
 
-        function pad_addr(addr, size) {
+        function clear_addr(addr, size) {
             let curr_addr = BigInt(addr);
             let curr_size = Number(size);
 
@@ -746,12 +746,42 @@
             }
         }
 
+        function fill_addr(addr, size) {
+            let curr_addr = BigInt(addr);
+            let curr_size = Number(size);
+
+            while (curr_size >= 8) {
+                write64(curr_addr, 0xffffffffffffffffn);
+
+                curr_addr += 8n;
+                curr_size -= 8;
+            }
+
+            if (curr_size >= 4) {
+                write32(curr_addr, 0xffffffff);
+
+                curr_addr += 4n;
+                curr_size -= 4;
+            }
+
+            if (curr_size >= 2) {
+                write16(curr_addr, 0xffff);
+
+                curr_addr += 2n;
+                curr_size -= 2;
+            }
+
+            if (curr_size >= 1) {
+                write8(curr_addr, 0xff);
+            }
+        }
+
         function validate_fd64(fd64) {
             return (
                 fd64 !== null
                 && fd64 !== undefined
                 && fd64 >= 0n
-                && fd64 !== 0xffffffffffffffffn
+                && fd64 <= 0x7fffffffn
             );
         }
 
@@ -760,7 +790,7 @@
                 fd32 !== null
                 && fd32 !== undefined
                 && fd32 >= 0
-                && fd32 !== 0xffffffff
+                && fd32 <= 0x7fffffff
             );
         }
 
@@ -778,44 +808,13 @@
             );
         }
 
-        function test_scm_rights_dup(fd) {
-            let method_found = false;
+        class fd_duper {
+            constructor() {
+                const sa64 = null;
+                const sa32 = null;
 
-            // validating fd
-
-            let fd64 = null;
-            let fd32 = null;
-
-            // logging fd64
-
-            const test_log_arr = ["fd64:"];
-
-            if (fd === null || fd === undefined) {
-                test_log_arr.push("N/A");
-            } else {
-                fd64 = BigInt(fd);
-
-                test_log_arr.push(toHex(fd64));
-
-                if (validate_fd64(fd64)) {
-                    fd32 = Number(fd64);
-
-                    if (validate_fd32(fd32)) {
-                        method_found = true;
-                    }
-                }
-            }
-
-            // creating a socketpair
-
-            let sa64 = null;
-            let sa32 = null;
-
-            let sb64 = null;
-            let sb32 = null;
-
-            if (method_found) {
-                method_found = false;
+                const sb64 = null;
+                const sb32 = null;
 
                 // https://man.freebsd.org/cgi/man.cgi?query=socketpair
                 //
@@ -833,130 +832,15 @@
 
                 const socketpair_sv_buffer_size = socketpair_sv_sb_offset + socketpair_sv_sb_size;
                 const socketpair_sv = malloc(socketpair_sv_buffer_size);
-
-                const socketpair_ret64 = (
-                    syscall(
-                        SYSCALL.socketpair
-                        , socketpair_domain
-                        , socketpair_type
-                        , socketpair_protocol
-                        , socketpair_sv
-                    )
-                );
-
-                // logging socketpair_ret64
-
-                test_log_arr.push("socketpair_ret64:");
-                test_log_arr.push(toHex(socketpair_ret64));
-
-                if (socketpair_ret64 === 0n) {
-                    // returns a BigInt holding a 32-bit value
-                    sa64 = read_addr(socketpair_sv + BigInt(socketpair_sv_sa_offset), socketpair_sv_sa_size);
-                    sa32 = Number(sa64);
-
-                    // logging sa64
-
-                    test_log_arr.push("sa64:");
-                    test_log_arr.push(toHex(sa64));
-
-                    if (validate_fd32(sa32)) {
-                        // returns a BigInt holding a 32-bit value
-                        sb64 = read_addr(socketpair_sv + BigInt(socketpair_sv_sb_offset), socketpair_sv_sb_size);
-                        sb32 = Number(sb64);
-
-                        // logging sb64
-
-                        test_log_arr.push("sb64:");
-                        test_log_arr.push(toHex(sb64));
-
-                        if (validate_fd32(sb32) && sa32 !== sb32) {
-                            method_found = true;
-                        }
-                    }
-                }
-            }
-
-            // preparing for sendmsg and recvmsg
-
-            if (method_found) {
-                method_found = false;
-
-                // F_SETFL returns 0xffffffffffffffffn in this environment, so it is skipped
-                // Not necessary anyway, because recvmsg is called only after sendmsg succeeds
-
-                if (true) {
-                    method_found = true;
-                } else {
-                    // https://man.freebsd.org/cgi/man.cgi?query=fcntl
-                    //
-                    // int fcntl(int fd, int cmd, int arg);
-
-                    const sa64_fcntl_setfl_fd = sa64;
-                    const sa64_fcntl_setfl_cmd = F_SETFL;
-                    const sa64_fcntl_setfl_arg = O_NONBLOCK;
-
-                    const sa64_fcntl_setfl_ret64 = (
-                        syscall(
-                            SYSCALL.fcntl
-                            , sa64_fcntl_setfl_fd
-                            , sa64_fcntl_setfl_cmd
-                            , sa64_fcntl_setfl_arg
-                        )
-                    );
-                    
-                    // logging sa64_fcntl_setfl_ret64
-
-                    test_log_arr.push("sa64_fcntl_setfl_ret64:");
-                    test_log_arr.push(toHex(sa64_fcntl_setfl_ret64));
                 
-                    if (sa64_fcntl_setfl_ret64 === 0n) {
-                        // https://man.freebsd.org/cgi/man.cgi?query=fcntl
-                        //
-                        // int fcntl(int fd, int cmd, int arg);
+                fill_addr(socketpair_sv, socketpair_sv_buffer_size);
 
-                        const sb64_fcntl_setfl_fd = sb64;
-                        const sb64_fcntl_setfl_cmd = sa64_fcntl_setfl_cmd;
-                        const sb64_fcntl_setfl_arg = sa64_fcntl_setfl_arg;
-
-                        const sb64_fcntl_setfl_ret64 = (
-                            syscall(
-                                SYSCALL.fcntl
-                                , sb64_fcntl_setfl_fd
-                                , sb64_fcntl_setfl_cmd
-                                , sb64_fcntl_setfl_arg
-                            )
-                        );
-                    
-                        // logging sb64_fcntl_setfl_ret64
-
-                        test_log_arr.push("sb64_fcntl_setfl_ret64:");
-                        test_log_arr.push(toHex(sb64_fcntl_setfl_ret64));
-
-                        if (sb64_fcntl_setfl_ret64 === 0n) {
-                            method_found = true;
-                        }
-                    }
-                }
-            }
-
-            const payload = 0x12;  // arbitrary, sent and received as normal data
-            const payload_size = 1;  // 1 byte (can be 8/4/2/1 bytes)
-
-            let dup_fd64 = null;
-            let dup_fd32 = null;
-
-            // sending and receiving the payload as normal data and the fd through SCM_RIGHTS control data using sendmsg and recvmsg
-
-            if (method_found) {
-                // sending the data
-
-                method_found = false;
+                const payload = 0x12;  // arbitrary, sent and received as normal data
+                const payload_size = 1;  // 1 byte (can be 8/4/2/1 bytes)
 
                 // https://man.freebsd.org/cgi/man.cgi?sendmsg
                 //
                 // ssize_t sendmsg(int s, const struct msghdr *msg,	int flags);
-
-                const sendmsg_s = sa64;
 
                 // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/socket.h
                 //
@@ -988,7 +872,7 @@
 
                 const sendmsg_msg_name = 0n;  // NULL pointer
                 const sendmsg_msg_namelen = 0;  // 0 bytes
-
+            
                 // https://man.freebsd.org/cgi/man.cgi?query=writev
                 //
                 // struct iovec {
@@ -1024,11 +908,10 @@
                 
                 write_addr(sendmsg_msg_iov + BigInt(sendmsg_msg_iov_base_offset), sendmsg_msg_iov_base, sendmsg_msg_iov_base_size);
                 write_addr(sendmsg_msg_iov + BigInt(sendmsg_msg_iov_len_offset), sendmsg_msg_iov_len, sendmsg_msg_iov_len_size);
-
-                pad_addr(
+                clear_addr(
                     sendmsg_msg_iov + BigInt(sendmsg_msg_iov_len_offset + sendmsg_msg_iov_len_size)
                     , sendmsg_msg_iov_buffer_size - (sendmsg_msg_iov_len_offset + sendmsg_msg_iov_len_size)
-                );
+                );  // padding
 
                 const sendmsg_msg_iovlen = 1;  // 1 iov entry
 
@@ -1054,7 +937,6 @@
                 const sendmsg_msg_control_cmsg_len = sendmsg_msg_control_cmsg_data_offset + sendmsg_msg_control_cmsg_data_size;
                 const sendmsg_msg_control_cmsg_level = Number(SOL_SOCKET);
                 const sendmsg_msg_control_cmsg_type = Number(SCM_RIGHTS);
-                const sendmsg_msg_control_cmsg_data = fd32;
 
                 const sendmsg_msg_control_buffer_size = align_up8(sendmsg_msg_control_cmsg_len);
                 const sendmsg_msg_control = malloc(sendmsg_msg_control_buffer_size);
@@ -1077,21 +959,16 @@
                     , sendmsg_msg_control_cmsg_type_size
                 );
 
-                pad_addr(
+                clear_addr(
                     sendmsg_msg_control + BigInt(sendmsg_msg_control_cmsg_type_offset + sendmsg_msg_control_cmsg_type_size)
                     , sendmsg_msg_control_cmsg_data_offset - (sendmsg_msg_control_cmsg_type_offset + sendmsg_msg_control_cmsg_type_size)
-                );
+                );  // padding
 
-                write_addr(
-                    sendmsg_msg_control + BigInt(sendmsg_msg_control_cmsg_data_offset)
-                    , sendmsg_msg_control_cmsg_data
-                    , sendmsg_msg_control_cmsg_data_size
-                );
-
-                pad_addr(
+                fill_addr(sendmsg_msg_control + BigInt(sendmsg_msg_control_cmsg_data_offset), sendmsg_msg_control_cmsg_data_size);
+                clear_addr(
                     sendmsg_msg_control + BigInt(sendmsg_msg_control_cmsg_data_offset + sendmsg_msg_control_cmsg_data_size)
                     , sendmsg_msg_control_buffer_size - (sendmsg_msg_control_cmsg_data_offset + sendmsg_msg_control_cmsg_data_size)
-                );
+                );  // padding
 
                 const sendmsg_msg_controllen = sendmsg_msg_control_buffer_size;
                 const sendmsg_msg_flags = 0;  // zeroed, unused by sendmsg
@@ -1101,46 +978,545 @@
 
                 write_addr(sendmsg_msg + BigInt(sendmsg_msg_name_offset), sendmsg_msg_name, sendmsg_msg_name_size);
                 write_addr(sendmsg_msg + BigInt(sendmsg_msg_namelen_offset), sendmsg_msg_namelen, sendmsg_msg_namelen_size);
-
-                pad_addr(
+                clear_addr(
                     sendmsg_msg + BigInt(sendmsg_msg_namelen_offset + sendmsg_msg_namelen_size)
                     , sendmsg_msg_iov_offset - (sendmsg_msg_namelen_offset + sendmsg_msg_namelen_size)
-                );
+                );  // padding
 
                 write_addr(sendmsg_msg + BigInt(sendmsg_msg_iov_offset), sendmsg_msg_iov, sendmsg_msg_iov_size);
                 write_addr(sendmsg_msg + BigInt(sendmsg_msg_iovlen_offset), sendmsg_msg_iovlen, sendmsg_msg_iovlen_size);
-
-                pad_addr(
+                clear_addr(
                     sendmsg_msg + BigInt(sendmsg_msg_iovlen_offset + sendmsg_msg_iovlen_size)
                     , sendmsg_msg_control_offset - (sendmsg_msg_iovlen_offset + sendmsg_msg_iovlen_size)
-                );
+                );  // padding
 
                 write_addr(sendmsg_msg + BigInt(sendmsg_msg_control_offset), sendmsg_msg_control, sendmsg_msg_control_size);
                 write_addr(sendmsg_msg + BigInt(sendmsg_msg_controllen_offset), sendmsg_msg_controllen, sendmsg_msg_controllen_size);
                 write_addr(sendmsg_msg + BigInt(sendmsg_msg_flags_offset), sendmsg_msg_flags, sendmsg_msg_flags_size);
-
-                pad_addr(
+                clear_addr(
                     sendmsg_msg + BigInt(sendmsg_msg_flags_offset + sendmsg_msg_flags_size)
                     , sendmsg_msg_buffer_size - (sendmsg_msg_flags_offset + sendmsg_msg_flags_size)
-                );
-
+                );  // padding
+                
                 const sendmsg_flags = 0n;  // no special flags
 
-                const sendmsg_ret64 = syscall(SYSCALL.sendmsg, sendmsg_s, sendmsg_msg, sendmsg_flags);
+                // receiving the data
 
-                // logging sendmsg_ret64
+                // https://man.freebsd.org/cgi/man.cgi?recvmsg
+                //
+                // ssize_t recvmsg(int s, struct msghdr *msg, int flags);
 
-                test_log_arr.push("sendmsg_ret64:");
-                test_log_arr.push(toHex(sendmsg_ret64));
+                // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/socket.h
+                //
+                // struct msghdr {
+                //     void            *msg_name;      /* optional address             */
+                //     socklen_t       msg_namelen;    /* size of address              */
+                //     struct iovec    *msg_iov;       /* scatter/gather array         */
+                //     int             msg_iovlen;     /* # elements in msg_iov        */
+                //     void            *msg_control;   /* ancillary data, see below    */
+                //     socklen_t       msg_controllen; /* ancillary data buffer len    */
+                //     int             msg_flags;      /* flags on received message    */
+                // };
 
-                if (sendmsg_ret64 === sendmsg_msg_iov_len) {
-                    // receiving the data
+                const recvmsg_msg_name_size = sendmsg_msg_name_size;
+                const recvmsg_msg_namelen_size = sendmsg_msg_namelen_size;
+                const recvmsg_msg_iov_size = sendmsg_msg_iov_size;
+                const recvmsg_msg_iovlen_size = sendmsg_msg_iovlen_size;
+                const recvmsg_msg_control_size = sendmsg_msg_control_size;
+                const recvmsg_msg_controllen_size = sendmsg_msg_controllen_size;
+                const recvmsg_msg_flags_size = sendmsg_msg_flags_size;
 
-                    // https://man.freebsd.org/cgi/man.cgi?recvmsg
+                const recvmsg_msg_name_offset = sendmsg_msg_name_offset;
+                const recvmsg_msg_namelen_offset = sendmsg_msg_namelen_offset;
+                const recvmsg_msg_iov_offset = sendmsg_msg_iov_offset;
+                const recvmsg_msg_iovlen_offset = sendmsg_msg_iovlen_offset;
+                const recvmsg_msg_control_offset = sendmsg_msg_control_offset;
+                const recvmsg_msg_controllen_offset = sendmsg_msg_controllen_offset;
+                const recvmsg_msg_flags_offset = sendmsg_msg_flags_offset;
+
+                const recvmsg_msg_name = 0n;  // NULL pointer (source address is not requested)
+                const recvmsg_msg_namelen = 0;  // 0 bytes (no source address buffer)
+
+                // https://man.freebsd.org/cgi/man.cgi?query=writev
+                //
+                // struct iovec {
+                //     void    *iov_base;  /* Base address.    */
+                //     size_t  iov_len;    /* Length.          */
+                // };
+
+                const recvmsg_msg_iov_base_size = sendmsg_msg_iov_base_size;
+                const recvmsg_msg_iov_len_size = sendmsg_msg_iov_len_size;
+
+                const recvmsg_msg_iov_base_offset = sendmsg_msg_iov_base_offset;
+                const recvmsg_msg_iov_len_offset = sendmsg_msg_iov_len_offset;
+
+                const recvmsg_msg_iov_base_data_size = sendmsg_msg_iov_base_data_size;
+
+                const recvmsg_msg_iov_base_data_offset = sendmsg_msg_iov_base_data_offset;
+
+                const recvmsg_msg_iov_base_buffer_size = sendmsg_msg_iov_base_buffer_size;
+                const recvmsg_msg_iov_base = malloc(recvmsg_msg_iov_base_buffer_size);
+
+                clear_addr(recvmsg_msg_iov_base, recvmsg_msg_iov_base_buffer_size);
+
+                const recvmsg_msg_iov_len = sendmsg_msg_iov_len;
+
+                const recvmsg_msg_iov_buffer_size = sendmsg_msg_iov_buffer_size;
+                const recvmsg_msg_iov = malloc(recvmsg_msg_iov_buffer_size);
+                
+                write_addr(recvmsg_msg_iov + BigInt(recvmsg_msg_iov_base_offset), recvmsg_msg_iov_base, recvmsg_msg_iov_base_size);
+                write_addr(recvmsg_msg_iov + BigInt(recvmsg_msg_iov_len_offset), recvmsg_msg_iov_len, recvmsg_msg_iov_len_size);
+                clear_addr(
+                    recvmsg_msg_iov + BigInt(recvmsg_msg_iov_len_offset + recvmsg_msg_iov_len_size)
+                    , recvmsg_msg_iov_buffer_size - (recvmsg_msg_iov_len_offset + recvmsg_msg_iov_len_size)
+                );  // padding
+                
+                const recvmsg_msg_iovlen = sendmsg_msg_iovlen;
+
+                // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/socket.h
+                //
+                // struct cmsghdr {
+                //     socklen_t   cmsg_len;   /* data byte count, including hdr   */
+                //     int         cmsg_level; /* originating protocol             */
+                //     int         cmsg_type;  /* protocol-specific type           */
+                // /* followed by u_char cmsg_data[]; */
+                // };
+
+                const recvmsg_msg_control_cmsg_len_size = sendmsg_msg_control_cmsg_len_size;
+                const recvmsg_msg_control_cmsg_level_size = sendmsg_msg_control_cmsg_level_size;
+                const recvmsg_msg_control_cmsg_type_size = sendmsg_msg_control_cmsg_type_size;
+                const recvmsg_msg_control_cmsg_data_size = sendmsg_msg_control_cmsg_data_size;
+
+                const recvmsg_msg_control_cmsg_len_offset = sendmsg_msg_control_cmsg_len_offset;
+                const recvmsg_msg_control_cmsg_level_offset = sendmsg_msg_control_cmsg_level_offset;
+                const recvmsg_msg_control_cmsg_type_offset = sendmsg_msg_control_cmsg_type_offset;
+                const recvmsg_msg_control_cmsg_data_offset = sendmsg_msg_control_cmsg_data_offset;
+
+                const recvmsg_msg_control_buffer_size = sendmsg_msg_control_buffer_size;
+                const recvmsg_msg_control = malloc(recvmsg_msg_control_buffer_size);
+
+                clear_addr(recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_len_offset), recvmsg_msg_control_cmsg_len_size);
+                clear_addr(recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_level_offset), recvmsg_msg_control_cmsg_level_size);
+                clear_addr(recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset), recvmsg_msg_control_cmsg_type_size);
+                clear_addr(
+                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset + recvmsg_msg_control_cmsg_type_size)
+                    , recvmsg_msg_control_cmsg_data_offset - (recvmsg_msg_control_cmsg_type_offset + recvmsg_msg_control_cmsg_type_size)
+                );  // padding
+
+                fill_addr(recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset), recvmsg_msg_control_cmsg_data_size);
+                clear_addr(
+                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset + recvmsg_msg_control_cmsg_data_size)
+                    , recvmsg_msg_control_buffer_size - (recvmsg_msg_control_cmsg_data_offset + recvmsg_msg_control_cmsg_data_size)
+                );  // padding
+
+                const recvmsg_msg_controllen = sendmsg_msg_controllen;
+                const recvmsg_msg_flags = 0;  // initial value (recvmsg writes output flags here)
+
+                const recvmsg_msg_buffer_size = sendmsg_msg_buffer_size;
+                const recvmsg_msg = malloc(recvmsg_msg_buffer_size);
+
+                write_addr(recvmsg_msg + BigInt(recvmsg_msg_name_offset), recvmsg_msg_name, recvmsg_msg_name_size);
+                write_addr(recvmsg_msg + BigInt(recvmsg_msg_namelen_offset), recvmsg_msg_namelen, recvmsg_msg_namelen_size);
+                clear_addr(
+                    recvmsg_msg + BigInt(recvmsg_msg_namelen_offset + recvmsg_msg_namelen_size)
+                    , recvmsg_msg_iov_offset - (recvmsg_msg_namelen_offset + recvmsg_msg_namelen_size)
+                );  // padding
+
+                write_addr(recvmsg_msg + BigInt(recvmsg_msg_iov_offset), recvmsg_msg_iov, recvmsg_msg_iov_size);
+                write_addr(recvmsg_msg + BigInt(recvmsg_msg_iovlen_offset), recvmsg_msg_iovlen, recvmsg_msg_iovlen_size);
+                clear_addr(
+                    recvmsg_msg + BigInt(recvmsg_msg_iovlen_offset + recvmsg_msg_iovlen_size)
+                    , recvmsg_msg_control_offset - (recvmsg_msg_iovlen_offset + recvmsg_msg_iovlen_size)
+                );  // padding
+
+                write_addr(recvmsg_msg + BigInt(recvmsg_msg_control_offset), recvmsg_msg_control, recvmsg_msg_control_size);
+                write_addr(recvmsg_msg + BigInt(recvmsg_msg_controllen_offset), recvmsg_msg_controllen, recvmsg_msg_controllen_size);
+                write_addr(recvmsg_msg + BigInt(recvmsg_msg_flags_offset), recvmsg_msg_flags, recvmsg_msg_flags_size);
+                clear_addr(
+                    recvmsg_msg + BigInt(recvmsg_msg_flags_offset + recvmsg_msg_flags_size)
+                    , recvmsg_msg_buffer_size - (recvmsg_msg_flags_offset + recvmsg_msg_flags_size)
+                );  // padding
+
+                const recvmsg_flags = 0n;  // no special flags
+                
+                this.started = false;
+
+                this.sa64 = sa64;
+                this.sa32 = sa32;
+
+                this.sb64 = sb64;
+                this.sb32 = sb32;
+
+                this.socketpair_domain = socketpair_domain;
+                this.socketpair_type = socketpair_type;
+                this.socketpair_protocol = socketpair_protocol;
+
+                this.socketpair_sv_sa_size = socketpair_sv_sa_size;
+                this.socketpair_sv_sb_size = socketpair_sv_sb_size;
+
+                this.socketpair_sv_sa_offset = socketpair_sv_sa_offset;
+                this.socketpair_sv_sb_offset = socketpair_sv_sb_offset;
+
+                this.socketpair_sv_buffer_size = socketpair_sv_buffer_size;
+                this.socketpair_sv = socketpair_sv;
+
+                this.payload = payload;
+                this.payload_size = payload_size;
+
+                this.sendmsg_msg_name_size = sendmsg_msg_name_size;
+                this.sendmsg_msg_namelen_size = sendmsg_msg_namelen_size;
+                this.sendmsg_msg_iov_size = sendmsg_msg_iov_size;
+                this.sendmsg_msg_iovlen_size = sendmsg_msg_iovlen_size;
+                this.sendmsg_msg_control_size = sendmsg_msg_control_size;
+                this.sendmsg_msg_controllen_size = sendmsg_msg_controllen_size;
+                this.sendmsg_msg_flags_size = sendmsg_msg_flags_size;
+
+                this.sendmsg_msg_name_offset = sendmsg_msg_name_offset;
+                this.sendmsg_msg_namelen_offset = sendmsg_msg_namelen_offset;
+                this.sendmsg_msg_iov_offset = sendmsg_msg_iov_offset;
+                this.sendmsg_msg_iovlen_offset = sendmsg_msg_iovlen_offset;
+                this.sendmsg_msg_control_offset = sendmsg_msg_control_offset;
+                this.sendmsg_msg_controllen_offset = sendmsg_msg_controllen_offset;
+                this.sendmsg_msg_flags_offset = sendmsg_msg_flags_offset;
+
+                this.sendmsg_msg_name = sendmsg_msg_name;
+                this.sendmsg_msg_namelen = sendmsg_msg_namelen;
+
+                this.sendmsg_msg_iov_base_size = sendmsg_msg_iov_base_size;
+                this.sendmsg_msg_iov_len_size = sendmsg_msg_iov_len_size;
+
+                this.sendmsg_msg_iov_base_offset = sendmsg_msg_iov_base_offset;
+                this.sendmsg_msg_iov_len_offset = sendmsg_msg_iov_len_offset;
+
+                this.sendmsg_msg_iov_base_data_size = sendmsg_msg_iov_base_data_size;
+
+                this.sendmsg_msg_iov_base_data_offset = sendmsg_msg_iov_base_data_offset;
+
+                this.sendmsg_msg_iov_base_data = sendmsg_msg_iov_base_data;
+
+                this.sendmsg_msg_iov_base_buffer_size = sendmsg_msg_iov_base_buffer_size;
+                this.sendmsg_msg_iov_base = sendmsg_msg_iov_base;
+
+                this.sendmsg_msg_iov_len = sendmsg_msg_iov_len;
+
+                this.sendmsg_msg_iov_buffer_size = sendmsg_msg_iov_buffer_size;
+                this.sendmsg_msg_iov = sendmsg_msg_iov;
+
+                this.sendmsg_msg_iovlen = sendmsg_msg_iovlen;
+
+                this.sendmsg_msg_control_cmsg_len_size = sendmsg_msg_control_cmsg_len_size;
+                this.sendmsg_msg_control_cmsg_level_size = sendmsg_msg_control_cmsg_level_size;
+                this.sendmsg_msg_control_cmsg_type_size = sendmsg_msg_control_cmsg_type_size;
+                this.sendmsg_msg_control_cmsg_data_size = sendmsg_msg_control_cmsg_data_size;
+
+                this.sendmsg_msg_control_cmsg_len_offset = sendmsg_msg_control_cmsg_len_offset;
+                this.sendmsg_msg_control_cmsg_level_offset = sendmsg_msg_control_cmsg_level_offset;
+                this.sendmsg_msg_control_cmsg_type_offset = sendmsg_msg_control_cmsg_type_offset;
+                this.sendmsg_msg_control_cmsg_data_offset = sendmsg_msg_control_cmsg_data_offset;
+
+                this.sendmsg_msg_control_cmsg_len = sendmsg_msg_control_cmsg_len;
+                this.sendmsg_msg_control_cmsg_level = sendmsg_msg_control_cmsg_level;
+                this.sendmsg_msg_control_cmsg_type = sendmsg_msg_control_cmsg_type;
+
+                this.sendmsg_msg_control_buffer_size = sendmsg_msg_control_buffer_size;
+                this.sendmsg_msg_control = sendmsg_msg_control;
+
+                this.sendmsg_msg_controllen = sendmsg_msg_controllen;
+                this.sendmsg_msg_flags = sendmsg_msg_flags;
+
+                this.sendmsg_msg_buffer_size = sendmsg_msg_buffer_size;
+                this.sendmsg_msg = sendmsg_msg;
+
+                this.sendmsg_flags = sendmsg_flags;
+
+                this.recvmsg_msg_name_size = recvmsg_msg_name_size;
+                this.recvmsg_msg_namelen_size = recvmsg_msg_namelen_size;
+                this.recvmsg_msg_iov_size = recvmsg_msg_iov_size;
+                this.recvmsg_msg_iovlen_size = recvmsg_msg_iovlen_size;
+                this.recvmsg_msg_control_size = recvmsg_msg_control_size;
+                this.recvmsg_msg_controllen_size = recvmsg_msg_controllen_size;
+                this.recvmsg_msg_flags_size = recvmsg_msg_flags_size;
+
+                this.recvmsg_msg_name_offset = recvmsg_msg_name_offset;
+                this.recvmsg_msg_namelen_offset = recvmsg_msg_namelen_offset;
+                this.recvmsg_msg_iov_offset = recvmsg_msg_iov_offset;
+                this.recvmsg_msg_iovlen_offset = recvmsg_msg_iovlen_offset;
+                this.recvmsg_msg_control_offset = recvmsg_msg_control_offset;
+                this.recvmsg_msg_controllen_offset = recvmsg_msg_controllen_offset;
+                this.recvmsg_msg_flags_offset = recvmsg_msg_flags_offset;
+
+                this.recvmsg_msg_name = recvmsg_msg_name;
+                this.recvmsg_msg_namelen = recvmsg_msg_namelen;
+
+                this.recvmsg_msg_iov_base_size = recvmsg_msg_iov_base_size;
+                this.recvmsg_msg_iov_len_size = recvmsg_msg_iov_len_size;
+
+                this.recvmsg_msg_iov_base_offset = recvmsg_msg_iov_base_offset;
+                this.recvmsg_msg_iov_len_offset = recvmsg_msg_iov_len_offset;
+
+                this.recvmsg_msg_iov_base_data_size = recvmsg_msg_iov_base_data_size;
+
+                this.recvmsg_msg_iov_base_data_offset = recvmsg_msg_iov_base_data_offset;
+
+                this.recvmsg_msg_iov_base_buffer_size = recvmsg_msg_iov_base_buffer_size;
+                this.recvmsg_msg_iov_base = recvmsg_msg_iov_base;
+
+                this.recvmsg_msg_iov_len = recvmsg_msg_iov_len;
+
+                this.recvmsg_msg_iov_buffer_size = recvmsg_msg_iov_buffer_size;
+                this.recvmsg_msg_iov = recvmsg_msg_iov;
+
+                this.recvmsg_msg_iovlen = recvmsg_msg_iovlen;
+
+                this.recvmsg_msg_control_cmsg_len_size = recvmsg_msg_control_cmsg_len_size;
+                this.recvmsg_msg_control_cmsg_level_size = recvmsg_msg_control_cmsg_level_size;
+                this.recvmsg_msg_control_cmsg_type_size = recvmsg_msg_control_cmsg_type_size;
+                this.recvmsg_msg_control_cmsg_data_size = recvmsg_msg_control_cmsg_data_size;
+
+                this.recvmsg_msg_control_cmsg_len_offset = recvmsg_msg_control_cmsg_len_offset;
+                this.recvmsg_msg_control_cmsg_level_offset = recvmsg_msg_control_cmsg_level_offset;
+                this.recvmsg_msg_control_cmsg_type_offset = recvmsg_msg_control_cmsg_type_offset;
+                this.recvmsg_msg_control_cmsg_data_offset = recvmsg_msg_control_cmsg_data_offset;
+
+                this.recvmsg_msg_control_buffer_size = recvmsg_msg_control_buffer_size;
+                this.recvmsg_msg_control = recvmsg_msg_control;
+                
+                this.recvmsg_msg_controllen = recvmsg_msg_controllen;
+                this.recvmsg_msg_flags = recvmsg_msg_flags;
+
+                this.recvmsg_msg_buffer_size = recvmsg_msg_buffer_size;
+                this.recvmsg_msg = recvmsg_msg;
+
+                this.recvmsg_flags = recvmsg_flags;
+            }
+
+            start(
+                {
+                    validate_sa = true
+                    , validate_sb = true
+                    , set_sa_nonblock = true
+                    , set_sb_nonblock = true
+                    , reset_socketpair_sv = true
+                } = {}
+            ) {
+                if (this.started) {
+                    return true;
+                }
+
+                let started = false;
+
+                let error_found = false;
+
+                // creating a socketpair
+
+                // https://man.freebsd.org/cgi/man.cgi?query=socketpair
+                //
+                // int socketpair(int domain, int type,	int protocol, int *sv);
+
+                const socketpair_domain = this.socketpair_domain;
+                const socketpair_type = this.socketpair_type;
+                const socketpair_protocol = this.socketpair_protocol;
+
+                const socketpair_sv_sa_size = this.socketpair_sv_sa_size;
+                const socketpair_sv_sb_size = this.socketpair_sv_sb_size;
+
+                const socketpair_sv_sa_offset = this.socketpair_sv_sa_offset;
+                const socketpair_sv_sb_offset = this.socketpair_sv_sb_offset;
+
+                const socketpair_sv_buffer_size = this.socketpair_sv_buffer_size;
+                const socketpair_sv = this.socketpair_sv;
+
+                // resets
+
+                if (reset_socketpair_sv) {
+                    fill_addr(socketpair_sv, socketpair_sv_buffer_size);  // reset, expected 2 valid new fds after socketpair
+                }
+
+                const socketpair_ret64 = (
+                    syscall(
+                        SYSCALL.socketpair
+                        , socketpair_domain
+                        , socketpair_type
+                        , socketpair_protocol
+                        , socketpair_sv
+                    )
+                );
+
+                if (socketpair_ret64 !== 0n) {
+                    error_found = true;
+                } else {
+                    // returns a BigInt holding a 32-bit value
+                    const sa64 = read_addr(socketpair_sv + BigInt(socketpair_sv_sa_offset), socketpair_sv_sa_size);
+                    const sa32 = Number(sa64);
+                
+                    // returns a BigInt holding a 32-bit value
+                    const sb64 = read_addr(socketpair_sv + BigInt(socketpair_sv_sb_offset), socketpair_sv_sb_size);
+                    const sb32 = Number(sb64);
+
+                    if (sa32 === sb32) {
+                        error_found = true;
+                    } else if (validate_sa && !validate_fd32(sa32)) {
+                        error_found = true;
+                    } else if (validate_sb && !validate_fd32(sb32)) {
+                        error_found = true;
+                    } else {
+                        if (set_sa_nonblock) {
+                            // F_SETFL returns 0xffffffffffffffffn in this environment, so it is skipped
+                            // Not necessary anyway, because recvmsg is called only after sendmsg succeeds
+
+                            if (false) {
+                                // https://man.freebsd.org/cgi/man.cgi?query=fcntl
+                                //
+                                // int fcntl(int fd, int cmd, int arg);
+
+                                const sa64_fcntl_setfl_fd = sa64;
+                                const sa64_fcntl_setfl_cmd = F_SETFL;
+                                const sa64_fcntl_setfl_arg = O_NONBLOCK;
+
+                                const sa64_fcntl_setfl_ret64 = (
+                                    syscall(
+                                        SYSCALL.fcntl
+                                        , sa64_fcntl_setfl_fd
+                                        , sa64_fcntl_setfl_cmd
+                                        , sa64_fcntl_setfl_arg
+                                    )
+                                );
+                            
+                                if (sa64_fcntl_setfl_ret64 !== 0n) {
+                                    error_found = true;
+                                }
+                            }
+                        }
+
+                        if (!error_found && set_sb_nonblock) {
+                            // F_SETFL returns 0xffffffffffffffffn in this environment, so it is skipped
+                            // Not necessary anyway, because recvmsg is called only after sendmsg succeeds
+
+                            if (false) {
+                                // https://man.freebsd.org/cgi/man.cgi?query=fcntl
+                                //
+                                // int fcntl(int fd, int cmd, int arg);
+
+                                const sb64_fcntl_setfl_fd = sb64;
+                                const sb64_fcntl_setfl_cmd = F_SETFL;
+                                const sb64_fcntl_setfl_arg = O_NONBLOCK;
+
+                                const sb64_fcntl_setfl_ret64 = (
+                                    syscall(
+                                        SYSCALL.fcntl
+                                        , sb64_fcntl_setfl_fd
+                                        , sb64_fcntl_setfl_cmd
+                                        , sb64_fcntl_setfl_arg
+                                    )
+                                );
+                            
+                                if (sb64_fcntl_setfl_ret64 !== 0n) {
+                                    error_found = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!error_found) {
+                        this.sa64 = sa64;
+                        this.sa32 = sa32;
+
+                        this.sb64 = sb64;
+                        this.sb32 = sb32;
+                    } else {
+                        close_fd32(sa32);  // ignore return value
+
+                        if (sb32 !== sa32) {
+                            close_fd32(sb32);  // ignore return value
+                        }
+                    }
+                }
+
+                if (!error_found) {
+                    started = true;
+                }
+
+                this.started = started;
+
+                return started;
+            }
+
+            dup(
+                fd
+                , {
+                    validate_fd = true
+                    , validate_dup_fd = true
+                    , validate_received_msg_iov_base_data = true
+                    , validate_received_msg_control_cmsg_len = true
+                    , validate_received_msg_control_cmsg_level = true
+                    , validate_received_msg_control_cmsg_type = true
+                    , validate_received_msg_namelen = true
+                    , validate_received_msg_controllen = true
+                    , validate_received_msg_flags = true
+                    , validate_fd_with_fcntl_getfd = true
+                    , validate_dup_fd_with_fcntl_getfd = true
+                    , compare_fd_and_dup_fd_with_fcntl_getfl = true
+                    , reset_recvmsg_msg_iov_base = true
+                    , reset_recvmsg_msg_control_cmsg_len = true
+                    , reset_recvmsg_msg_control_cmsg_level = true
+                    , reset_recvmsg_msg_control_cmsg_type = true
+                    , reset_recvmsg_msg_control_cmsg_data = true
+                    , reset_recvmsg_msg_namelen = true
+                    , reset_recvmsg_msg_controllen = true
+                    , reset_recvmsg_msg_flags = true
+                    , close_dup_fd_on_error = true
+                    , stop_on_error = true
+                } = {}
+            ) {
+                let error_found = false;
+
+                if (!this.started) {
+                    error_found = true;
+                }
+
+                let fd64 = null;
+                let fd32 = null;
+
+                // validating fd
+
+                if (!error_found) {
+                    try {
+                        fd64 = BigInt(fd);
+                    } catch {
+                        error_found = true;
+                    }
+
+                    if (!error_found) {
+                        if (validate_fd && !validate_fd64(fd64)) {
+                            error_found = true;
+                        } else {
+                            fd32 = Number(fd64);
+
+                            if (validate_fd && !validate_fd32(fd32)) {
+                                error_found = true;
+                            }
+                        }
+                    }
+                }
+
+                // const payload = this.payload;  // not used
+                // const payload_size = this.payload_size;  // not used
+
+                let dup_fd64 = null;
+                let dup_fd32 = null;
+
+                // sending and receiving the payload as normal data and the fd through SCM_RIGHTS control data using sendmsg and recvmsg
+
+                if (!error_found) {
+                    const sa64 = this.sa64;
+
+                    // sending the data
+
+                    // https://man.freebsd.org/cgi/man.cgi?sendmsg
                     //
-                    // ssize_t recvmsg(int s, struct msghdr *msg, int flags);
+                    // ssize_t sendmsg(int s, const struct msghdr *msg,	int flags);
 
-                    const recvmsg_s = sb64;
+                    const sendmsg_s = sa64;
 
                     // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/socket.h
                     //
@@ -1154,24 +1530,24 @@
                     //     int             msg_flags;      /* flags on received message    */
                     // };
 
-                    const recvmsg_msg_name_size = sendmsg_msg_name_size;
-                    const recvmsg_msg_namelen_size = sendmsg_msg_namelen_size;
-                    const recvmsg_msg_iov_size = sendmsg_msg_iov_size;
-                    const recvmsg_msg_iovlen_size = sendmsg_msg_iovlen_size;
-                    const recvmsg_msg_control_size = sendmsg_msg_control_size;
-                    const recvmsg_msg_controllen_size = sendmsg_msg_controllen_size;
-                    const recvmsg_msg_flags_size = sendmsg_msg_flags_size;
+                    // const sendmsg_msg_name_size = this.sendmsg_msg_name_size;  // not used
+                    // const sendmsg_msg_namelen_size = this.sendmsg_msg_namelen_size;  // not used
+                    // const sendmsg_msg_iov_size = this.sendmsg_msg_iov_size;  // not used
+                    // const sendmsg_msg_iovlen_size = this.sendmsg_msg_iovlen_size;  // not used
+                    // const sendmsg_msg_control_size = this.sendmsg_msg_control_size;  // not used
+                    // const sendmsg_msg_controllen_size = this.sendmsg_msg_controllen_size;  // not used
+                    // const sendmsg_msg_flags_size = this.sendmsg_msg_flags_size;  // not used
 
-                    const recvmsg_msg_name_offset = sendmsg_msg_name_offset;
-                    const recvmsg_msg_namelen_offset = sendmsg_msg_namelen_offset;
-                    const recvmsg_msg_iov_offset = sendmsg_msg_iov_offset;
-                    const recvmsg_msg_iovlen_offset = sendmsg_msg_iovlen_offset;
-                    const recvmsg_msg_control_offset = sendmsg_msg_control_offset;
-                    const recvmsg_msg_controllen_offset = sendmsg_msg_controllen_offset;
-                    const recvmsg_msg_flags_offset = sendmsg_msg_flags_offset;
+                    // const sendmsg_msg_name_offset = this.sendmsg_msg_name_offset;  // not used
+                    // const sendmsg_msg_namelen_offset = this.sendmsg_msg_namelen_offset;  // not used
+                    // const sendmsg_msg_iov_offset = this.sendmsg_msg_iov_offset;  // not used
+                    // const sendmsg_msg_iovlen_offset = this.sendmsg_msg_iovlen_offset;  // not used
+                    // const sendmsg_msg_control_offset = this.sendmsg_msg_control_offset;  // not used
+                    // const sendmsg_msg_controllen_offset = this.sendmsg_msg_controllen_offset;  // not used
+                    // const sendmsg_msg_flags_offset = this.sendmsg_msg_flags_offset;  // not used
 
-                    const recvmsg_msg_name = sendmsg_msg_name;
-                    const recvmsg_msg_namelen = sendmsg_msg_namelen;
+                    // const sendmsg_msg_name = this.sendmsg_msg_name;  // not used
+                    // const sendmsg_msg_namelen = this.sendmsg_msg_namelen;  // not used
 
                     // https://man.freebsd.org/cgi/man.cgi?query=writev
                     //
@@ -1180,35 +1556,27 @@
                     //     size_t  iov_len;    /* Length.          */
                     // };
 
-                    const recvmsg_msg_iov_base_size = sendmsg_msg_iov_base_size;
-                    const recvmsg_msg_iov_len_size = sendmsg_msg_iov_len_size;
+                    // const sendmsg_msg_iov_base_size = this.sendmsg_msg_iov_base_size;  // not used
+                    // const sendmsg_msg_iov_len_size = this.sendmsg_msg_iov_len_size;  // not used
 
-                    const recvmsg_msg_iov_base_offset = sendmsg_msg_iov_base_offset;
-                    const recvmsg_msg_iov_len_offset = sendmsg_msg_iov_len_offset;
+                    // const sendmsg_msg_iov_base_offset = this.sendmsg_msg_iov_base_offset;  // not used
+                    // const sendmsg_msg_iov_len_offset = this.sendmsg_msg_iov_len_offset;  // not used
 
-                    const recvmsg_msg_iov_base_data_size = sendmsg_msg_iov_base_data_size;
+                    // const sendmsg_msg_iov_base_data_size = this.sendmsg_msg_iov_base_data_size;  // not used
 
-                    const recvmsg_msg_iov_base_data_offset = sendmsg_msg_iov_base_data_offset;
+                    // const sendmsg_msg_iov_base_data_offset = this.sendmsg_msg_iov_base_data_offset;  // not used
 
-                    const recvmsg_msg_iov_base_buffer_size = sendmsg_msg_iov_base_buffer_size;
-                    const recvmsg_msg_iov_base = malloc(recvmsg_msg_iov_base_buffer_size);
+                    const sendmsg_msg_iov_base_data = this.sendmsg_msg_iov_base_data;
 
-                    pad_addr(recvmsg_msg_iov_base, recvmsg_msg_iov_base_buffer_size);  // cleared, expected sendmsg_msg_iov_base_data after recvmsg
+                    // const sendmsg_msg_iov_base_buffer_size = this.sendmsg_msg_iov_base_buffer_size;  // not used
+                    // const sendmsg_msg_iov_base = this.sendmsg_msg_iov_base;  // not used
 
-                    const recvmsg_msg_iov_len = sendmsg_msg_iov_len;
+                    const sendmsg_msg_iov_len = this.sendmsg_msg_iov_len;
 
-                    const recvmsg_msg_iov_buffer_size = sendmsg_msg_iov_buffer_size;
-                    const recvmsg_msg_iov = malloc(recvmsg_msg_iov_buffer_size);
-                    
-                    write_addr(recvmsg_msg_iov + BigInt(recvmsg_msg_iov_base_offset), recvmsg_msg_iov_base, recvmsg_msg_iov_base_size);
-                    write_addr(recvmsg_msg_iov + BigInt(recvmsg_msg_iov_len_offset), recvmsg_msg_iov_len, recvmsg_msg_iov_len_size);
+                    // const sendmsg_msg_iov_buffer_size = this.sendmsg_msg_iov_buffer_size;  // not used
+                    // const sendmsg_msg_iov = this.sendmsg_msg_iov;  // not used
 
-                    pad_addr(
-                        recvmsg_msg_iov + BigInt(recvmsg_msg_iov_len_offset + recvmsg_msg_iov_len_size)
-                        , recvmsg_msg_iov_buffer_size - (recvmsg_msg_iov_len_offset + recvmsg_msg_iov_len_size)
-                    );
-
-                    const recvmsg_msg_iovlen = sendmsg_msg_iovlen;
+                    // const sendmsg_msg_iovlen = this.sendmsg_msg_iovlen;  // not used
 
                     // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/socket.h
                     //
@@ -1219,303 +1587,374 @@
                     // /* followed by u_char cmsg_data[]; */
                     // };
 
-                    const recvmsg_msg_control_cmsg_len_size = sendmsg_msg_control_cmsg_len_size;
-                    const recvmsg_msg_control_cmsg_level_size = sendmsg_msg_control_cmsg_level_size;
-                    const recvmsg_msg_control_cmsg_type_size = sendmsg_msg_control_cmsg_type_size;
-                    const recvmsg_msg_control_cmsg_data_size = sendmsg_msg_control_cmsg_data_size;
+                    // const sendmsg_msg_control_cmsg_len_size = this.sendmsg_msg_control_cmsg_len_size;  // not used
+                    // const sendmsg_msg_control_cmsg_level_size = this.sendmsg_msg_control_cmsg_level_size;  // not used
+                    // const sendmsg_msg_control_cmsg_type_size = this.sendmsg_msg_control_cmsg_type_size;  // not used
+                    const sendmsg_msg_control_cmsg_data_size = this.sendmsg_msg_control_cmsg_data_size;
 
-                    const recvmsg_msg_control_cmsg_len_offset = sendmsg_msg_control_cmsg_len_offset;
-                    const recvmsg_msg_control_cmsg_level_offset = sendmsg_msg_control_cmsg_level_offset;
-                    const recvmsg_msg_control_cmsg_type_offset = sendmsg_msg_control_cmsg_type_offset;
-                    const recvmsg_msg_control_cmsg_data_offset = sendmsg_msg_control_cmsg_data_offset;
+                    // const sendmsg_msg_control_cmsg_len_offset = this.sendmsg_msg_control_cmsg_len_offset;  // not used
+                    // const sendmsg_msg_control_cmsg_level_offset = this.sendmsg_msg_control_cmsg_level_offset;  // not used
+                    // const sendmsg_msg_control_cmsg_type_offset = this.sendmsg_msg_control_cmsg_type_offset;  // not used
+                    const sendmsg_msg_control_cmsg_data_offset = this.sendmsg_msg_control_cmsg_data_offset;
 
-                    const recvmsg_msg_control_cmsg_len = 0;  // cleared, expected sendmsg_msg_control_cmsg_len after recvmsg
-                    const recvmsg_msg_control_cmsg_level = 0;  // cleared, expected sendmsg_msg_control_cmsg_level after recvmsg
-                    const recvmsg_msg_control_cmsg_type = 0;  // cleared, expected sendmsg_msg_control_cmsg_type after recvmsg
-                    const recvmsg_msg_control_cmsg_data = 0xffffffff;  // invalid fd, expected a valid new fd after recvmsg
+                    const sendmsg_msg_control_cmsg_len = this.sendmsg_msg_control_cmsg_len;
+                    const sendmsg_msg_control_cmsg_level = this.sendmsg_msg_control_cmsg_level;
+                    const sendmsg_msg_control_cmsg_type = this.sendmsg_msg_control_cmsg_type;
+                    const sendmsg_msg_control_cmsg_data = fd32;
 
-                    const recvmsg_msg_control_buffer_size = sendmsg_msg_control_buffer_size;
-                    const recvmsg_msg_control = malloc(recvmsg_msg_control_buffer_size);
-
-                    write_addr(
-                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_len_offset)
-                        , recvmsg_msg_control_cmsg_len
-                        , recvmsg_msg_control_cmsg_len_size
-                    );
+                    // const sendmsg_msg_control_buffer_size = this.sendmsg_msg_control_buffer_size;  // not used
+                    const sendmsg_msg_control = this.sendmsg_msg_control;
 
                     write_addr(
-                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_level_offset)
-                        , recvmsg_msg_control_cmsg_level
-                        , recvmsg_msg_control_cmsg_level_size
+                        sendmsg_msg_control + BigInt(sendmsg_msg_control_cmsg_data_offset)
+                        , sendmsg_msg_control_cmsg_data
+                        , sendmsg_msg_control_cmsg_data_size
                     );
 
-                    write_addr(
-                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset)
-                        , recvmsg_msg_control_cmsg_type
-                        , recvmsg_msg_control_cmsg_type_size
-                    );
+                    // const sendmsg_msg_controllen = this.sendmsg_msg_controllen;  // not used
+                    // const sendmsg_msg_flags = this.sendmsg_msg_flags;  // not used
 
-                    pad_addr(
-                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset + recvmsg_msg_control_cmsg_type_size)
-                        , recvmsg_msg_control_cmsg_data_offset - (recvmsg_msg_control_cmsg_type_offset + recvmsg_msg_control_cmsg_type_size)
-                    );
+                    // const sendmsg_msg_buffer_size = this.sendmsg_msg_buffer_size;  // not used
+                    const sendmsg_msg = this.sendmsg_msg;
 
-                    write_addr(
-                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset)
-                        , recvmsg_msg_control_cmsg_data
-                        , recvmsg_msg_control_cmsg_data_size
-                    );
+                    const sendmsg_flags = this.sendmsg_flags;
 
-                    pad_addr(
-                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset + recvmsg_msg_control_cmsg_data_size)
-                        , recvmsg_msg_control_buffer_size - (recvmsg_msg_control_cmsg_data_offset + recvmsg_msg_control_cmsg_data_size)
-                    );
+                    const sendmsg_ret64 = syscall(SYSCALL.sendmsg, sendmsg_s, sendmsg_msg, sendmsg_flags);
 
-                    // expected a value from sendmsg_msg_control_cmsg_len through sendmsg_msg_control_buffer_size after recvmsg
-                    const recvmsg_msg_controllen = sendmsg_msg_controllen;
-                    const recvmsg_msg_flags = 0;  // initial value, recvmsg writes output flags here
+                    if (sendmsg_ret64 !== sendmsg_msg_iov_len) {
+                        error_found = true;
+                    } else {
+                        const sb64 = this.sb64;
 
-                    const recvmsg_msg_buffer_size = sendmsg_msg_buffer_size;
-                    const recvmsg_msg = malloc(recvmsg_msg_buffer_size);
+                        // receiving the data
 
-                    write_addr(recvmsg_msg + BigInt(recvmsg_msg_name_offset), recvmsg_msg_name, recvmsg_msg_name_size);
-                    write_addr(recvmsg_msg + BigInt(recvmsg_msg_namelen_offset), recvmsg_msg_namelen, recvmsg_msg_namelen_size);
+                        // https://man.freebsd.org/cgi/man.cgi?recvmsg
+                        //
+                        // ssize_t recvmsg(int s, struct msghdr *msg, int flags);
 
-                    pad_addr(
-                        recvmsg_msg + BigInt(recvmsg_msg_namelen_offset + recvmsg_msg_namelen_size)
-                        , recvmsg_msg_iov_offset - (recvmsg_msg_namelen_offset + recvmsg_msg_namelen_size)
-                    );
+                        const recvmsg_s = sb64;
 
-                    write_addr(recvmsg_msg + BigInt(recvmsg_msg_iov_offset), recvmsg_msg_iov, recvmsg_msg_iov_size);
-                    write_addr(recvmsg_msg + BigInt(recvmsg_msg_iovlen_offset), recvmsg_msg_iovlen, recvmsg_msg_iovlen_size);
+                        // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/socket.h
+                        //
+                        // struct msghdr {
+                        //     void            *msg_name;      /* optional address             */
+                        //     socklen_t       msg_namelen;    /* size of address              */
+                        //     struct iovec    *msg_iov;       /* scatter/gather array         */
+                        //     int             msg_iovlen;     /* # elements in msg_iov        */
+                        //     void            *msg_control;   /* ancillary data, see below    */
+                        //     socklen_t       msg_controllen; /* ancillary data buffer len    */
+                        //     int             msg_flags;      /* flags on received message    */
+                        // };
 
-                    pad_addr(
-                        recvmsg_msg + BigInt(recvmsg_msg_iovlen_offset + recvmsg_msg_iovlen_size)
-                        , recvmsg_msg_control_offset - (recvmsg_msg_iovlen_offset + recvmsg_msg_iovlen_size)
-                    );
+                        // const recvmsg_msg_name_size = this.recvmsg_msg_name_size;  // not used
+                        const recvmsg_msg_namelen_size = this.recvmsg_msg_namelen_size;
+                        // const recvmsg_msg_iov_size = this.recvmsg_msg_iov_size;  // not used
+                        // const recvmsg_msg_iovlen_size = this.recvmsg_msg_iovlen_size;  // not used
+                        // const recvmsg_msg_control_size = this.recvmsg_msg_control_size;  // not used
+                        const recvmsg_msg_controllen_size = this.recvmsg_msg_controllen_size;
+                        const recvmsg_msg_flags_size = this.recvmsg_msg_flags_size;
 
-                    write_addr(recvmsg_msg + BigInt(recvmsg_msg_control_offset), recvmsg_msg_control, recvmsg_msg_control_size);
-                    write_addr(recvmsg_msg + BigInt(recvmsg_msg_controllen_offset), recvmsg_msg_controllen, recvmsg_msg_controllen_size);
-                    write_addr(recvmsg_msg + BigInt(recvmsg_msg_flags_offset), recvmsg_msg_flags, recvmsg_msg_flags_size);
+                        // const recvmsg_msg_name_offset = this.recvmsg_msg_name_offset;  // not used
+                        const recvmsg_msg_namelen_offset = this.recvmsg_msg_namelen_offset;
+                        // const recvmsg_msg_iov_offset = this.recvmsg_msg_iov_offset;  // not used
+                        // const recvmsg_msg_iovlen_offset = this.recvmsg_msg_iovlen_offset;  // not used
+                        // const recvmsg_msg_control_offset = this.recvmsg_msg_control_offset;  // not used
+                        const recvmsg_msg_controllen_offset = this.recvmsg_msg_controllen_offset;
+                        const recvmsg_msg_flags_offset = this.recvmsg_msg_flags_offset;
 
-                    pad_addr(
-                        recvmsg_msg + BigInt(recvmsg_msg_flags_offset + recvmsg_msg_flags_size)
-                        , recvmsg_msg_buffer_size - (recvmsg_msg_flags_offset + recvmsg_msg_flags_size)
-                    );
+                        // const recvmsg_msg_name = this.recvmsg_msg_name;  // not used
+                        const recvmsg_msg_namelen = this.recvmsg_msg_namelen;
 
-                    const recvmsg_flags = 0n;  // no special flags
+                        // https://man.freebsd.org/cgi/man.cgi?query=writev
+                        //
+                        // struct iovec {
+                        //     void    *iov_base;  /* Base address.    */
+                        //     size_t  iov_len;    /* Length.          */
+                        // };
 
-                    const recvmsg_ret64 = syscall(SYSCALL.recvmsg, recvmsg_s, recvmsg_msg, recvmsg_flags);
+                        // const recvmsg_msg_iov_base_size = this.recvmsg_msg_iov_base_size;  // not used
+                        // const recvmsg_msg_iov_len_size = this.recvmsg_msg_iov_len_size;  // not used
 
-                    // logging recvmsg_ret64
+                        // const recvmsg_msg_iov_base_offset = this.recvmsg_msg_iov_base_offset;  // not used
+                        // const recvmsg_msg_iov_len_offset = this.recvmsg_msg_iov_len_offset;  // not used
 
-                    test_log_arr.push("recvmsg_ret64:");
-                    test_log_arr.push(toHex(recvmsg_ret64));
+                        const recvmsg_msg_iov_base_data_size = this.recvmsg_msg_iov_base_data_size;
 
-                    if (recvmsg_ret64 === recvmsg_msg_iov_len) {
-                        // validating the received data
+                        const recvmsg_msg_iov_base_data_offset = this.recvmsg_msg_iov_base_data_offset;
 
-                        const sendmsg_msg_iov_base_data64 = BigInt(sendmsg_msg_iov_base_data);
-                        const recvmsg_msg_iov_base_data64 = (
-                            read_addr(
-                                recvmsg_msg_iov_base + BigInt(recvmsg_msg_iov_base_data_offset)
-                                , recvmsg_msg_iov_base_data_size
-                            )
-                        );
+                        const recvmsg_msg_iov_base_buffer_size = this.recvmsg_msg_iov_base_buffer_size;
+                        const recvmsg_msg_iov_base = this.recvmsg_msg_iov_base;
 
-                        // logging recvmsg_msg_iov_base_data64
+                        const recvmsg_msg_iov_len = this.recvmsg_msg_iov_len;
 
-                        test_log_arr.push("recvmsg_msg_iov_base_data64:");
-                        test_log_arr.push(toHex(recvmsg_msg_iov_base_data64));
+                        // const recvmsg_msg_iov_buffer_size = this.recvmsg_msg_iov_buffer_size;  // not used
+                        // const recvmsg_msg_iov = this.recvmsg_msg_iov;  // not used
 
-                        if (sendmsg_msg_iov_base_data64 === recvmsg_msg_iov_base_data64) {
-                            method_found = true;
+                        // const recvmsg_msg_iovlen = this.recvmsg_msg_iovlen;  // not used
+
+                        // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/socket.h
+                        //
+                        // struct cmsghdr {
+                        //     socklen_t   cmsg_len;   /* data byte count, including hdr   */
+                        //     int         cmsg_level; /* originating protocol             */
+                        //     int         cmsg_type;  /* protocol-specific type           */
+                        // /* followed by u_char cmsg_data[]; */
+                        // };
+
+                        const recvmsg_msg_control_cmsg_len_size = this.recvmsg_msg_control_cmsg_len_size;
+                        const recvmsg_msg_control_cmsg_level_size = this.recvmsg_msg_control_cmsg_level_size;
+                        const recvmsg_msg_control_cmsg_type_size = this.recvmsg_msg_control_cmsg_type_size;
+                        const recvmsg_msg_control_cmsg_data_size = this.recvmsg_msg_control_cmsg_data_size;
+
+                        const recvmsg_msg_control_cmsg_len_offset = this.recvmsg_msg_control_cmsg_len_offset;
+                        const recvmsg_msg_control_cmsg_level_offset = this.recvmsg_msg_control_cmsg_level_offset;
+                        const recvmsg_msg_control_cmsg_type_offset = this.recvmsg_msg_control_cmsg_type_offset;
+                        const recvmsg_msg_control_cmsg_data_offset = this.recvmsg_msg_control_cmsg_data_offset;
+
+                        // const recvmsg_msg_control_buffer_size = this.recvmsg_msg_control_buffer_size;  // not used
+                        const recvmsg_msg_control = this.recvmsg_msg_control;
+
+                        const recvmsg_msg_controllen = this.recvmsg_msg_controllen;
+                        const recvmsg_msg_flags = this.recvmsg_msg_flags;
+
+                        // const recvmsg_msg_buffer_size = this.recvmsg_msg_buffer_size;  // not used
+                        const recvmsg_msg = this.recvmsg_msg;
+
+                        const recvmsg_flags = this.recvmsg_flags;
+
+                        // resets
+
+                        if (reset_recvmsg_msg_iov_base) {
+                            clear_addr(
+                                recvmsg_msg_iov_base
+                                , recvmsg_msg_iov_base_buffer_size
+                            );  // reset, expected sendmsg_msg_iov_base_data after recvmsg
                         }
 
-                        if (method_found) {
-                            method_found = false;
-
-                            const recvmsg_msg_control_cmsg_len64 = (
-                                read_addr(
-                                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_len_offset)
-                                    , recvmsg_msg_control_cmsg_len_size
-                                )
-                            );
-
-                            const recvmsg_msg_control_cmsg_len32 = Number(recvmsg_msg_control_cmsg_len64);
-                            const sendmsg_msg_control_cmsg_len32 = sendmsg_msg_control_cmsg_len;
-
-                            // logging recvmsg_msg_control_cmsg_len64
-
-                            test_log_arr.push("recvmsg_msg_control_cmsg_len64:");
-                            test_log_arr.push(toHex(recvmsg_msg_control_cmsg_len64));
-
-                            if (sendmsg_msg_control_cmsg_len32 === recvmsg_msg_control_cmsg_len32) {
-                                method_found = true;
-                            }
+                        if (reset_recvmsg_msg_control_cmsg_len) {
+                            clear_addr(
+                                recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_len_offset)
+                                , recvmsg_msg_control_cmsg_len_size
+                            );  // reset, expected sendmsg_msg_control_cmsg_len after recvmsg
                         }
 
-                        if (method_found) {
-                            method_found = false;
-
-                            const recvmsg_msg_control_cmsg_level64 = (
-                                read_addr(
-                                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_level_offset)
-                                    , recvmsg_msg_control_cmsg_level_size
-                                )
-                            );
-
-                            const recvmsg_msg_control_cmsg_level32 = Number(recvmsg_msg_control_cmsg_level64);
-                            const sendmsg_msg_control_cmsg_level32 = sendmsg_msg_control_cmsg_level;
-
-                            // logging recvmsg_msg_control_cmsg_level64
-
-                            test_log_arr.push("recvmsg_msg_control_cmsg_level64:");
-                            test_log_arr.push(toHex(recvmsg_msg_control_cmsg_level64));
-
-                            if (sendmsg_msg_control_cmsg_level32 === recvmsg_msg_control_cmsg_level32) {
-                                method_found = true;
-                            }
+                        if (reset_recvmsg_msg_control_cmsg_level) {
+                            clear_addr(
+                                recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_level_offset)
+                                , recvmsg_msg_control_cmsg_level_size
+                            );  // reset, expected sendmsg_msg_control_cmsg_level after recvmsg
                         }
 
-                        if (method_found) {
-                            method_found = false;
-
-                            const recvmsg_msg_control_cmsg_type64 = (
-                                read_addr(
-                                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset)
-                                    , recvmsg_msg_control_cmsg_type_size
-                                )
-                            );
-
-                            const recvmsg_msg_control_cmsg_type32 = Number(recvmsg_msg_control_cmsg_type64);
-                            const sendmsg_msg_control_cmsg_type32 = sendmsg_msg_control_cmsg_type;
-
-                            // logging recvmsg_msg_control_cmsg_type64
-
-                            test_log_arr.push("recvmsg_msg_control_cmsg_type64:");
-                            test_log_arr.push(toHex(recvmsg_msg_control_cmsg_type64));
-
-                            if (sendmsg_msg_control_cmsg_type32 === recvmsg_msg_control_cmsg_type32) {
-                                method_found = true;
-                            }
+                        if (reset_recvmsg_msg_control_cmsg_type) {
+                            clear_addr(
+                                recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset)
+                                , recvmsg_msg_control_cmsg_type_size
+                            );  // reset, expected sendmsg_msg_control_cmsg_type after recvmsg
                         }
 
-                        if (method_found) {
-                            method_found = false;
+                        if (reset_recvmsg_msg_control_cmsg_data) {
+                            fill_addr(
+                                recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset)
+                                , recvmsg_msg_control_cmsg_data_size
+                            );  // reset, expected a duplicated fd after recvmsg
+                        }
 
-                            const recvmsg_msg_control_cmsg_data64 = (
+                        if (reset_recvmsg_msg_namelen) {
+                            write_addr(
+                                recvmsg_msg + BigInt(recvmsg_msg_namelen_offset)
+                                , recvmsg_msg_namelen
+                                , recvmsg_msg_namelen_size
+                            );  // reset, expected recvmsg_msg_namelen after recvmsg
+                        }
+                        
+                        if (reset_recvmsg_msg_controllen) {
+                            write_addr(
+                                recvmsg_msg + BigInt(recvmsg_msg_controllen_offset)
+                                , recvmsg_msg_controllen
+                                , recvmsg_msg_controllen_size
+                            );  // reset, expected recvmsg_msg_controllen after recvmsg
+                        }
+
+                        if (reset_recvmsg_msg_flags) {
+                            write_addr(
+                                recvmsg_msg + BigInt(recvmsg_msg_flags_offset)
+                                , recvmsg_msg_flags
+                                , recvmsg_msg_flags_size
+                            );  // reset, expected recvmsg_msg_flags after recvmsg
+                        }
+
+                        const recvmsg_ret64 = syscall(SYSCALL.recvmsg, recvmsg_s, recvmsg_msg, recvmsg_flags);
+
+                        if (recvmsg_ret64 !== recvmsg_msg_iov_len) {
+                            error_found = true;
+                        } else {
+                            // reading and validating the received data
+
+                            dup_fd64 = (
                                 read_addr(
                                     recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset)
                                     , recvmsg_msg_control_cmsg_data_size
                                 )
                             );
 
-                            const recvmsg_msg_control_cmsg_data32 = Number(recvmsg_msg_control_cmsg_data64);
+                            dup_fd32 = Number(dup_fd64);
 
-                            // logging recvmsg_msg_control_cmsg_data64
-
-                            test_log_arr.push("recvmsg_msg_control_cmsg_data64:");
-                            test_log_arr.push(toHex(recvmsg_msg_control_cmsg_data64));
-
-                            if (validate_fd32(recvmsg_msg_control_cmsg_data32)) {
-                                dup_fd64 = recvmsg_msg_control_cmsg_data64;
-                                dup_fd32 = recvmsg_msg_control_cmsg_data32;
-
-                                const sendmsg_msg_control_cmsg_data32 = sendmsg_msg_control_cmsg_data;
-
-                                if (sendmsg_msg_control_cmsg_data32 !== recvmsg_msg_control_cmsg_data32) {
-                                    method_found = true;
-                                }
+                            if (dup_fd32 === fd32) {
+                                error_found = true;
+                            } else if (validate_dup_fd && !validate_fd32(dup_fd32)) {
+                                error_found = true;
                             }
-                        }
 
-                        if (method_found) {
-                            method_found = false;
-
-                            const recvmsg_msg_controllen64 = (
-                                read_addr(
-                                    recvmsg_msg + BigInt(recvmsg_msg_controllen_offset)
-                                    , recvmsg_msg_controllen_size
-                                )
-                            );
-
-                            const recvmsg_msg_controllen32 = Number(recvmsg_msg_controllen64);
-                            const sendmsg_msg_control_cmsg_len32 = sendmsg_msg_control_cmsg_len;
-
-                            // logging recvmsg_msg_controllen64
-
-                            test_log_arr.push("recvmsg_msg_controllen64:");
-                            test_log_arr.push(toHex(recvmsg_msg_controllen64));
-
-                            if (recvmsg_msg_controllen32 >= sendmsg_msg_control_cmsg_len32) {
-                                const sendmsg_msg_control_buffer_size32 = sendmsg_msg_control_buffer_size;
-
-                                if (recvmsg_msg_controllen32 <= sendmsg_msg_control_buffer_size32) {
-                                    method_found = true;
-                                }
-                            }
-                        }
-
-                        if (method_found) {
-                            method_found = false;
-
-                            const recvmsg_msg_flags64 = (
-                                read_addr(
-                                    recvmsg_msg + BigInt(recvmsg_msg_flags_offset)
-                                    , recvmsg_msg_flags_size
-                                )
-                            );
-
-                            const recvmsg_msg_flags32 = Number(recvmsg_msg_flags64);
-
-                            // logging recvmsg_msg_flags64
-
-                            test_log_arr.push("recvmsg_msg_flags64:");
-                            test_log_arr.push(toHex(recvmsg_msg_flags64));
-
-                            if (recvmsg_msg_flags32 === 0) {
-                                method_found = true;
-                            }
-                        }
-
-                        if (method_found) {
-                            method_found = false;
-                        
-                            // F_GETFD seems unsupported/unreliable here, but F_GETFL works
-                            // F_GETFL matching verifies the received fd is valid and has matching file status flags
-
-                            if (true) {
-                                method_found = true;
-                            } else {
-                                // https://man.freebsd.org/cgi/man.cgi?query=fcntl
-                                //
-                                // int fcntl(int fd, int cmd, int arg);
-                                const fd64_fcntl_getfd_fd = fd64;
-                                const fd64_fcntl_getfd_cmd = F_GETFD;
-                                const fd64_fcntl_getfd_arg = 0n;  // no special argument
-
-                                const fd64_fcntl_getfd_ret64 = (
-                                    syscall(
-                                        SYSCALL.fcntl
-                                        , fd64_fcntl_getfd_fd
-                                        , fd64_fcntl_getfd_cmd
-                                        , fd64_fcntl_getfd_arg
+                            if (!error_found && validate_received_msg_iov_base_data) {
+                                const sent_msg_iov_base_data32 = sendmsg_msg_iov_base_data;
+                                const received_msg_iov_base_data64 = (
+                                    read_addr(
+                                        recvmsg_msg_iov_base + BigInt(recvmsg_msg_iov_base_data_offset)
+                                        , recvmsg_msg_iov_base_data_size
                                     )
                                 );
-                                
-                                // logging fd64_fcntl_getfd_ret64
 
-                                test_log_arr.push("fd64_fcntl_getfd_ret64:");
-                                test_log_arr.push(toHex(fd64_fcntl_getfd_ret64));
+                                const received_msg_iov_base_data32 = Number(received_msg_iov_base_data64);
+
+                                if (received_msg_iov_base_data32 !== sent_msg_iov_base_data32) {
+                                    error_found = true;
+                                }
+                            }
+
+                            if (!error_found && validate_received_msg_control_cmsg_len) {
+                                const sent_msg_control_cmsg_len32 = sendmsg_msg_control_cmsg_len;
+                                const received_msg_control_cmsg_len64 = (
+                                    read_addr(
+                                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_len_offset)
+                                        , recvmsg_msg_control_cmsg_len_size
+                                    )
+                                );
+
+                                const received_msg_control_cmsg_len32 = Number(received_msg_control_cmsg_len64);
+
+                                if (received_msg_control_cmsg_len32 !== sent_msg_control_cmsg_len32) {
+                                    error_found = true;
+                                }
+                            }
+
+                            if (!error_found && validate_received_msg_control_cmsg_level) {
+                                const sent_msg_control_cmsg_level32 = sendmsg_msg_control_cmsg_level;
+                                const received_msg_control_cmsg_level64 = (
+                                    read_addr(
+                                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_level_offset)
+                                        , recvmsg_msg_control_cmsg_level_size
+                                    )
+                                );
+
+                                const received_msg_control_cmsg_level32 = Number(received_msg_control_cmsg_level64);
+
+                                if (received_msg_control_cmsg_level32 !== sent_msg_control_cmsg_level32) {
+                                    error_found = true;
+                                }
+                            }
+
+                            if (!error_found && validate_received_msg_control_cmsg_type) {
+                                const sent_msg_control_cmsg_type32 = sendmsg_msg_control_cmsg_type;
+                                const received_msg_control_cmsg_type64 = (
+                                    read_addr(
+                                        recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset)
+                                        , recvmsg_msg_control_cmsg_type_size
+                                    )
+                                );
+
+                                const received_msg_control_cmsg_type32 = Number(received_msg_control_cmsg_type64);
+
+                                if (received_msg_control_cmsg_type32 !== sent_msg_control_cmsg_type32) {
+                                    error_found = true;
+                                }
+                            }
+
+                            if (!error_found && validate_received_msg_namelen) {
+                                const recvmsg_msg_namelen32 = recvmsg_msg_namelen;
+                                const received_msg_namelen64 = (
+                                    read_addr(
+                                        recvmsg_msg + BigInt(recvmsg_msg_namelen_offset)
+                                        , recvmsg_msg_namelen_size
+                                    )
+                                );
+
+                                const received_msg_namelen32 = Number(received_msg_namelen64);
+
+                                if (received_msg_namelen32 !== recvmsg_msg_namelen32) {
+                                    error_found = true;
+                                }
+                            }
+
+                            if (!error_found && validate_received_msg_controllen) {
+                                const recvmsg_msg_controllen32 = recvmsg_msg_controllen;
+                                const received_msg_controllen64 = (
+                                    read_addr(
+                                        recvmsg_msg + BigInt(recvmsg_msg_controllen_offset)
+                                        , recvmsg_msg_controllen_size
+                                    )
+                                );
+
+                                const received_msg_controllen32 = Number(received_msg_controllen64);
+
+                                if (received_msg_controllen32 !== recvmsg_msg_controllen32) {
+                                    error_found = true;
+                                }
+                            }
                             
-                                if (fd64_fcntl_getfd_ret64 !== 0xffffffffffffffffn) {
+                            if (!error_found && validate_received_msg_flags) {
+                                const recvmsg_msg_flags32 = recvmsg_msg_flags;
+                                const received_msg_flags64 = (
+                                    read_addr(
+                                        recvmsg_msg + BigInt(recvmsg_msg_flags_offset)
+                                        , recvmsg_msg_flags_size
+                                    )
+                                );
+
+                                const received_msg_flags32 = Number(received_msg_flags64);
+
+                                if (received_msg_flags32 !== recvmsg_msg_flags32) {
+                                    error_found = true;
+                                }
+                            }
+
+                            if (!error_found && validate_fd_with_fcntl_getfd) {
+                                // F_GETFD seems unsupported/unreliable here, but F_GETFL works
+
+                                if (false) {
                                     // https://man.freebsd.org/cgi/man.cgi?query=fcntl
                                     //
                                     // int fcntl(int fd, int cmd, int arg);
+
+                                    const fd64_fcntl_getfd_fd = fd64;
+                                    const fd64_fcntl_getfd_cmd = F_GETFD;
+                                    const fd64_fcntl_getfd_arg = 0n;  // ignored by F_GETFD
+
+                                    const fd64_fcntl_getfd_ret64 = (
+                                        syscall(
+                                            SYSCALL.fcntl
+                                            , fd64_fcntl_getfd_fd
+                                            , fd64_fcntl_getfd_cmd
+                                            , fd64_fcntl_getfd_arg
+                                        )
+                                    );
+                                
+                                    if (fd64_fcntl_getfd_ret64 === 0xffffffffffffffffn) {
+                                        error_found = true;
+                                    }
+                                }
+                            }
+
+                            if (!error_found && validate_dup_fd_with_fcntl_getfd) {
+                                // F_GETFD seems unsupported/unreliable here, but F_GETFL works
+
+                                if (false) {
+                                    // https://man.freebsd.org/cgi/man.cgi?query=fcntl
+                                    //
+                                    // int fcntl(int fd, int cmd, int arg);
+
                                     const dup_fd64_fcntl_getfd_fd = dup_fd64;
                                     const dup_fd64_fcntl_getfd_cmd = F_GETFD;
-                                    const dup_fd64_fcntl_getfd_arg = 0n;  // no special argument
+                                    const dup_fd64_fcntl_getfd_arg = 0n;  // ignored by F_GETFD
 
                                     const dup_fd64_fcntl_getfd_ret64 = (
                                         syscall(
@@ -1525,172 +1964,106 @@
                                             , dup_fd64_fcntl_getfd_arg
                                         )
                                     );
-                                    
-                                    // logging dup_fd64_fcntl_getfd_ret64
-
-                                    test_log_arr.push("dup_fd64_fcntl_getfd_ret64:");
-                                    test_log_arr.push(toHex(dup_fd64_fcntl_getfd_ret64));
                                 
-                                    if (dup_fd64_fcntl_getfd_ret64 !== 0xffffffffffffffffn) {
-                                        method_found = true;
+                                    if (dup_fd64_fcntl_getfd_ret64 === 0xffffffffffffffffn) {
+                                        error_found = true;
                                     }
                                 }
                             }
-                        }
 
-                        if (method_found) {
-                            method_found = false;
+                            if (!error_found && compare_fd_and_dup_fd_with_fcntl_getfl) {
+                                // F_GETFL matching verifies the received fd is valid and has matching file status flags
 
-                            // https://man.freebsd.org/cgi/man.cgi?query=fcntl
-                            //
-                            // int fcntl(int fd, int cmd, int arg);
-                            const fd64_fcntl_getfl_fd = fd64;
-                            const fd64_fcntl_getfl_cmd = F_GETFL;
-                            const fd64_fcntl_getfl_arg = 0n;  // no special argument
-
-                            const fd64_fcntl_getfl_ret64 = (
-                                syscall(
-                                    SYSCALL.fcntl
-                                    , fd64_fcntl_getfl_fd
-                                    , fd64_fcntl_getfl_cmd
-                                    , fd64_fcntl_getfl_arg
-                                )
-                            );
-                            
-                            // logging fd64_fcntl_getfl_ret64
-
-                            test_log_arr.push("fd64_fcntl_getfl_ret64:");
-                            test_log_arr.push(toHex(fd64_fcntl_getfl_ret64));
-                        
-                            if (fd64_fcntl_getfl_ret64 !== 0xffffffffffffffffn) {
                                 // https://man.freebsd.org/cgi/man.cgi?query=fcntl
                                 //
                                 // int fcntl(int fd, int cmd, int arg);
-                                const dup_fd64_fcntl_getfl_fd = dup_fd64;
-                                const dup_fd64_fcntl_getfl_cmd = F_GETFL;
-                                const dup_fd64_fcntl_getfl_arg = 0n;  // no special argument
 
-                                const dup_fd64_fcntl_getfl_ret64 = (
+                                const fd64_fcntl_getfl_fd = fd64;
+                                const fd64_fcntl_getfl_cmd = F_GETFL;
+                                const fd64_fcntl_getfl_arg = 0n;  // ignored by F_GETFL
+
+                                const fd64_fcntl_getfl_ret64 = (
                                     syscall(
                                         SYSCALL.fcntl
-                                        , dup_fd64_fcntl_getfl_fd
-                                        , dup_fd64_fcntl_getfl_cmd
-                                        , dup_fd64_fcntl_getfl_arg
+                                        , fd64_fcntl_getfl_fd
+                                        , fd64_fcntl_getfl_cmd
+                                        , fd64_fcntl_getfl_arg
                                     )
                                 );
-                                
-                                // logging dup_fd64_fcntl_getfl_ret64
-
-                                test_log_arr.push("dup_fd64_fcntl_getfl_ret64:");
-                                test_log_arr.push(toHex(dup_fd64_fcntl_getfl_ret64));
                             
-                                if (fd64_fcntl_getfl_ret64 === dup_fd64_fcntl_getfl_ret64) {
-                                    method_found = true;
+                                if (fd64_fcntl_getfl_ret64 === 0xffffffffffffffffn) {
+                                    error_found = true;
+                                } else {
+                                    // https://man.freebsd.org/cgi/man.cgi?query=fcntl
+                                    //
+                                    // int fcntl(int fd, int cmd, int arg);
+
+                                    const dup_fd64_fcntl_getfl_fd = dup_fd64;
+                                    const dup_fd64_fcntl_getfl_cmd = fd64_fcntl_getfl_cmd;
+                                    const dup_fd64_fcntl_getfl_arg = fd64_fcntl_getfl_arg;
+
+                                    const dup_fd64_fcntl_getfl_ret64 = (
+                                        syscall(
+                                            SYSCALL.fcntl
+                                            , dup_fd64_fcntl_getfl_fd
+                                            , dup_fd64_fcntl_getfl_cmd
+                                            , dup_fd64_fcntl_getfl_arg
+                                        )
+                                    );
+                                
+                                    if (dup_fd64_fcntl_getfl_ret64 !== fd64_fcntl_getfl_ret64) {
+                                        error_found = true;
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // logging the result
+                if (error_found) {
+                    if (dup_fd32 === fd32) {
+                        dup_fd64 = null;
+                        dup_fd32 = null;
+                    } else if (close_dup_fd_on_error) {
+                        close_fd32(dup_fd32);  // ignore return value
 
-            test_log_arr.push("test result:");
+                        dup_fd64 = null;
+                        dup_fd32 = null;
+                    }
 
-            if (method_found) {
-                // method_found = false;  // not used any further
-
-                test_log_arr.push("success");
-
-                test_log_arr.push("original fd:");
-                test_log_arr.push(toHex(fd64));
-
-                test_log_arr.push("first socket:");
-                test_log_arr.push(toHex(sa64));
-
-                test_log_arr.push("second socket:");
-                test_log_arr.push(toHex(sb64));
-
-                test_log_arr.push("duplicated fd:");
-                test_log_arr.push(toHex(dup_fd64));
-            } else {
-                test_log_arr.push("failure");
-
-                test_log_arr.push("original fd:");
-
-                if (validate_fd64(fd64) && validate_fd32(fd32)) {
-                    test_log_arr.push(toHex(fd64));
-                } else {
-                    test_log_arr.push("N/A");
+                    if (stop_on_error) {
+                        this.stop();
+                    }
                 }
 
-                test_log_arr.push("first socket:");
+                return [error_found, dup_fd64, dup_fd32];
+            }
 
-                if (validate_fd32(sa32)) {
-                    test_log_arr.push(toHex(sa64));
-                } else {
-                    test_log_arr.push("N/A");
+            stop() {
+                if (!this.started) {
+                    return;
                 }
 
-                test_log_arr.push("second socket:");
+                // closing the sockets
 
-                if (validate_fd32(sb32)) {
-                    test_log_arr.push(toHex(sb64));
-                } else {
-                    test_log_arr.push("N/A");
-                }
+                close_fd32(this.sa32);  // ignore return value
+                close_fd32(this.sb32);  // ignore return value
 
-                test_log_arr.push("duplicated fd:");
+                // cleanup
 
-                if (validate_fd32(dup_fd32)) {
-                    test_log_arr.push(toHex(dup_fd64));
-                } else {
-                    test_log_arr.push("N/A");
-                }
+                this.sa64 = null;
+                this.sa32 = null;
+
+                this.sb64 = null;
+                this.sb32 = null;
+
+                this.started = false;
+
+                return;
             }
-
-            // cleanup
-
-            // closing the first socket
-
-            test_log_arr.push("closing the first socket:");
-
-            if (close_fd32(sa32)) {
-                test_log_arr.push("success");
-            } else {
-                test_log_arr.push("failure");
-            }
-
-            // closing the second socket
-
-            test_log_arr.push("closing the second socket:");
-
-            if (close_fd32(sb32)) {
-                test_log_arr.push("success");
-            } else {
-                test_log_arr.push("failure");
-            }
-
-            // closing the duplicated fd
-
-            test_log_arr.push("closing the duplicated fd:");
-
-            if (close_fd32(dup_fd32)) {
-                test_log_arr.push("success");
-            } else {
-                test_log_arr.push("failure");
-            }
-
-            // joining the test log
-
-            const test_log = test_log_arr.join("\n");
-
-            // returning the test log
-
-            return test_log;
         }
 
-        async function setup_pipes_kernrw(S) {
+        function setup_pipes_kernrw(S) {
             const [m_r, m_w] = create_pipe();
             const [v_r, v_w] = create_pipe();
             S.master_rfd = Number(m_r); S.master_wfd = Number(m_w);
@@ -1706,7 +2079,65 @@
                 if (!tested_scm_rights_dup) {
                     tested_scm_rights_dup = true;
 
-                    test_log = test_scm_rights_dup(fd);
+                    // making 2 duplications of the fd
+
+                    const duper = new fd_duper();
+
+                    duper.start();  // ignore return value
+
+                    const [error_found_a, dup_fd64_a, dup_fd32_a] = duper.dup(fd, {validate_dup_fd_with_fcntl_getfd: false});
+
+                    duper.start();  // ignore return value
+
+                    const [error_found_b, dup_fd64_b, dup_fd32_b] = duper.dup(fd);
+
+                    duper.stop();
+
+                    // creating a test log
+
+                    const test_log_arr = [];
+
+                    test_log_arr.push("error_found_a:");
+
+                    if (error_found_a) {
+                        test_log_arr.push("true");
+                    } else {
+                        test_log_arr.push("false");
+
+                        test_log_arr.push("dup_fd64_a:");
+                        test_log_arr.push(toHex(dup_fd64_a));
+                        
+                        test_log_arr.push("closing dup_fd32_a:");
+                        
+                        if (close_fd32(dup_fd32_a)) {
+                            test_log_arr.push("success");
+                        } else {
+                            test_log_arr.push("failure");
+                        }
+                    }
+
+                    test_log_arr.push("error_found_b:");
+
+                    if (error_found_b) {
+                        test_log_arr.push("true");
+                    } else {
+                        test_log_arr.push("false");
+
+                        test_log_arr.push("dup_fd64_b:");
+                        test_log_arr.push(toHex(dup_fd64_b));
+                        
+                        test_log_arr.push("closing dup_fd32_b:");
+                        
+                        if (close_fd32(dup_fd32_b)) {
+                            test_log_arr.push("success");
+                        } else {
+                            test_log_arr.push("failure");
+                        }
+                    }
+
+                    // joining the test log
+
+                    test_log = test_log_arr.join("\n");
                 }
             }
 
@@ -3397,7 +3828,7 @@
         setup_worker_sockets(S);
         setup_iov_buffers(S);
         setup_uio_buffers(S);
-        const test_log = await setup_pipes_kernrw(S);
+        const test_log = setup_pipes_kernrw(S);
         await ulog(p2jb_version + " - port by matem6");
         await ulog("pipes master=" + S.master_rfd + "," + S.master_wfd +
             " victim=" + S.victim_rfd + "," + S.victim_wfd);

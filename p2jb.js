@@ -640,8 +640,12 @@
             const lines = message.split("\n");
             const lines_length = lines.length;
 
-            for (let i = 0; i < lines_length; i += max_lines) {
-                const lines_sliced = lines.slice(i, i + max_lines);
+            for (
+                let lines_index = 0;
+                lines_index < lines_length;
+                lines_index += max_lines
+            ) {
+                const lines_sliced = lines.slice(lines_index, lines_index + max_lines);
                 const lines_sliced_message = lines_sliced.join("\n");
 
                 if (lines_sliced_message !== "") {
@@ -918,7 +922,7 @@
                     , sendmsg_msg_iov_buffer_size - (sendmsg_msg_iov_len_offset + sendmsg_msg_iov_len_size)
                 );  // padding
 
-                const sendmsg_msg_iovlen = 1;  // 1 iov entry
+                const sendmsg_msg_iovlen = 1;  // one iov entry
 
                 // https://github.com/freebsd/freebsd-src/blob/main/sys/sys/socket.h
                 //
@@ -1348,7 +1352,7 @@
                 // resets
 
                 if (reset_socketpair_sv) {
-                    fill_addr(socketpair_sv, socketpair_sv_buffer_size);  // reset, expected 2 valid new fds after socketpair
+                    fill_addr(socketpair_sv, socketpair_sv_buffer_size);  // reset, expected two valid new fds after socketpair
                 }
 
                 const socketpair_ret64 = (
@@ -2116,19 +2120,7 @@
                 if (TEST && !tested_scm_rights_dup) {
                     tested_scm_rights_dup = true;
 
-                    // making 2 duplications of the fd
-
-                    const duper = new fd_duper();
-
-                    const start_error_number_a = duper.start();
-
-                    const [dup_error_number_a, dup_fd64_a, dup_fd32_a] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
-
-                    const start_error_number_b = duper.start();
-
-                    const [dup_error_number_b, dup_fd64_b, dup_fd32_b] = duper.dup(fd64);
-
-                    duper.stop();
+                    let error_found = false;
 
                     // creating a test log array
 
@@ -2139,68 +2131,95 @@
                     test_log_arr.push("fd64:");
                     test_log_arr.push(toHex(fd64));
 
-                    // logging start_error_number_a
+                    // creating a new fd duplicator
 
-                    test_log_arr.push("start_error_number_a:");
-                    test_log_arr.push(start_error_number_a);
+                    const duper = new fd_duper();
 
-                    // logging dup_error_number_a
+                    // choosing the number of fd duplications to generate
 
-                    test_log_arr.push("dup_error_number_a:");
-                    test_log_arr.push(dup_error_number_a);
+                    const target_dup_fds32_size = 5;
 
-                    if (dup_error_number_a === 0) {
-                        // logging dup_fd64_a
+                    const dup_fds32 = new Set();
 
-                        test_log_arr.push("dup_fd64_a:");
-                        test_log_arr.push(toHex(dup_fd64_a));
+                    try {
+                        // generating fd duplications
 
-                        test_log_arr.push("closing dup_fd32_a:");
+                        for (
+                            let dup_fd_attempt_number = 1;
+                            dup_fd_attempt_number <= target_dup_fds32_size;
+                            dup_fd_attempt_number += 1
+                        ) {
+                            // starting the fd duplicator
 
-                        if (close_fd32(dup_fd32_a)) {
-                            test_log_arr.push("success");
-                        } else {
-                            test_log_arr.push("failure");
+                            const start_error_number = duper.start();
+
+                            // logging start_error_number
+
+                            test_log_arr.push("start_error_number (" + dup_fd_attempt_number + "):");
+                            test_log_arr.push(start_error_number);
+
+                            if (start_error_number !== 0) {
+                                error_found = true;
+                            } else {
+                                // generating a fd duplication
+
+                                const [dup_error_number, dup_fd64, dup_fd32] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
+
+                                // logging dup_error_number
+
+                                test_log_arr.push("dup_error_number (" + dup_fd_attempt_number + "):");
+                                test_log_arr.push(dup_error_number);
+
+                                if (dup_error_number !== 0) {
+                                    error_found = true;
+                                } else {
+                                    dup_fds32.add(dup_fd32);
+
+                                    // logging dup_fd64
+
+                                    test_log_arr.push("dup_fd64 (" + dup_fd_attempt_number + "):");
+                                    test_log_arr.push(toHex(dup_fd64));
+                                }
+                            }
                         }
+                    } finally {
+                        if (dup_fds32.size !== target_dup_fds32_size) {
+                            error_found = true;
+                        }
+
+                        // closing the fd duplications
+
+                        for (const dup_fd32 of dup_fds32) {
+                            const dup_fd64 = BigInt(dup_fd32);
+
+                            // closing the fd duplication
+
+                            if (close_fd32(dup_fd32)) {
+                                test_log_arr.push("closed dup_fd64:");
+                            } else {
+                                error_found = true;
+
+                                test_log_arr.push("failed to close dup_fd64:");
+                            }
+
+                            test_log_arr.push(toHex(dup_fd64));
+                        }
+
+                        // stopping the fd duplicator
+
+                        duper.stop();
                     }
 
-                    // logging start_error_number_b
+                    const test_result = !error_found;
 
-                    test_log_arr.push("start_error_number_b:");
-                    test_log_arr.push(start_error_number_b);
+                    // logging test_result
 
-                    // logging dup_error_number_b
+                    test_log_arr.push("test_result:");
 
-                    test_log_arr.push("dup_error_number_b:");
-                    test_log_arr.push(dup_error_number_b);
-
-                    if (dup_error_number_b === 0) {
-                        // logging dup_fd64_b
-
-                        test_log_arr.push("dup_fd64_b:");
-                        test_log_arr.push(toHex(dup_fd64_b));
-
-                        test_log_arr.push("closing dup_fd32_b:");
-
-                        if (close_fd32(dup_fd32_b)) {
-                            test_log_arr.push("success");
-                        } else {
-                            test_log_arr.push("failure");
-                        }
-                    }
-
-                    if (dup_error_number_a === 0 && dup_error_number_b === 0) {
-                        const diff_dup_fds = dup_fd64_b !== dup_fd64_a;
-
-                        // logging diff_dup_fds
-
-                        test_log_arr.push("diff_dup_fds:");
-
-                        if (diff_dup_fds) {
-                            test_log_arr.push("true");
-                        } else {
-                            test_log_arr.push("false");
-                        }
+                    if (test_result) {
+                        test_log_arr.push("success");
+                    } else {
+                        test_log_arr.push("failure");
                     }
 
                     // joining the test log array
@@ -3920,10 +3939,10 @@
             S.uio_sock_a = -1;
             S.uio_sock_b = -1;
 
-            const test_log_lines = split_message(test_log, 10);
+            const test_log_messages = split_message(test_log, 10);
 
-            for (const test_log_line of test_log_lines) {
-                send_notification(test_log_line);
+            for (const test_log_message of test_log_messages) {
+                send_notification(test_log_message);
 
                 await js_sleep(10000);
             }

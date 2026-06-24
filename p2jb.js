@@ -2102,6 +2102,131 @@
             }
         }
 
+        function test_fd_duper(fd64) {
+            let error_found = false;
+
+            // creating a test log array
+
+            const test_log_arr = [];
+
+            // logging fd64
+
+            test_log_arr.push("fd64:");
+            test_log_arr.push(toHex(fd64));
+
+            // creating a new fd duplicator
+
+            const duper = new fd_duper();
+
+            // choosing the number of attempts to generate fd duplications
+
+            const dup_fd_attempts_amount = 5;
+
+            const dup_fds32 = new Set();
+
+            try {
+                // generating fd duplications
+
+                for (
+                    let dup_fd_attempt_number = 1;
+                    dup_fd_attempt_number <= dup_fd_attempts_amount;
+                    dup_fd_attempt_number += 1
+                ) {
+                    // starting the fd duplicator
+                    //
+                    // note:
+                    // this is intentionally inside the loop
+                    // , after a start method failure, the fd duplicator remains stopped
+                    // , after a dup method failure, it stops because stop_on_error is true by default
+                    // , in either case, it needs to be started again on the next iteration
+                    // , after a successful dup method, it remains started
+                    // , therefore, the start method on the next iteration is effectively a no-op
+
+                    const start_error_number = duper.start();
+
+                    // logging start_error_number
+
+                    test_log_arr.push("start_error_number (" + dup_fd_attempt_number + "):");
+                    test_log_arr.push(start_error_number);
+
+                    if (start_error_number !== 0) {
+                        error_found = true;
+                    } else {
+                        // generating a fd duplication
+
+                        const [dup_error_number, dup_fd64, dup_fd32] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
+
+                        // logging dup_error_number
+
+                        test_log_arr.push("dup_error_number (" + dup_fd_attempt_number + "):");
+                        test_log_arr.push(dup_error_number);
+
+                        if (dup_error_number !== 0) {
+                            error_found = true;
+                        } else if (dup_fds32.has(dup_fd32)) {
+                            error_found = true;
+
+                            // logging repeated dup_fd64
+
+                            test_log_arr.push("repeated dup_fd64 (" + dup_fd_attempt_number + "):");
+                            test_log_arr.push(toHex(dup_fd64));
+                        } else {
+                            dup_fds32.add(dup_fd32);
+
+                            // logging dup_fd64
+
+                            test_log_arr.push("dup_fd64 (" + dup_fd_attempt_number + "):");
+                            test_log_arr.push(toHex(dup_fd64));
+                        }
+                    }
+                }
+            } finally {
+                if (dup_fds32.size !== dup_fd_attempts_amount) {
+                    error_found = true;
+                }
+
+                // closing the fd duplications
+
+                for (const dup_fd32 of dup_fds32) {
+                    const dup_fd64 = BigInt(dup_fd32);
+
+                    // closing the fd duplication
+
+                    if (close_fd32(dup_fd32)) {
+                        test_log_arr.push("closed dup_fd64:");
+                    } else {
+                        error_found = true;
+
+                        test_log_arr.push("failed to close dup_fd64:");
+                    }
+
+                    test_log_arr.push(toHex(dup_fd64));
+                }
+
+                // stopping the fd duplicator
+
+                duper.stop();
+            }
+
+            const test_result = !error_found;
+
+            // logging test_result
+
+            test_log_arr.push("test_result:");
+
+            if (test_result) {
+                test_log_arr.push("success");
+            } else {
+                test_log_arr.push("failure");
+            }
+
+            // joining the test log array
+
+            const test_log = test_log_arr.join("\n");
+
+            return test_log;
+        }
+
         function setup_pipes_kernrw(S) {
             const [m_r, m_w] = create_pipe();
             const [v_r, v_w] = create_pipe();
@@ -2120,121 +2245,7 @@
                 if (TEST && !tested_scm_rights_dup) {
                     tested_scm_rights_dup = true;
 
-                    let error_found = false;
-
-                    // creating a test log array
-
-                    const test_log_arr = [];
-
-                    // logging fd64
-
-                    test_log_arr.push("fd64:");
-                    test_log_arr.push(toHex(fd64));
-
-                    // creating a new fd duplicator
-
-                    const duper = new fd_duper();
-
-                    // choosing the number of fd duplications to generate
-
-                    const target_dup_fds32_size = 5;
-
-                    const dup_fds32 = new Set();
-
-                    try {
-                        // generating fd duplications
-
-                        for (
-                            let dup_fd_attempt_number = 1;
-                            dup_fd_attempt_number <= target_dup_fds32_size;
-                            dup_fd_attempt_number += 1
-                        ) {
-                            // starting the fd duplicator
-                            //
-                            // note:
-                            // this is intentionally inside the loop
-                            // , after a start method failure, the fd duplicator remains not started
-                            // , and after a dup method failure, the fd duplicator stops by default
-                            // , so it needs to be started again on the next iteration
-                            // , after a successful dup method, it remains started
-                            // , so the start method on the next iteration is effectively a no-op
-
-                            const start_error_number = duper.start();
-
-                            // logging start_error_number
-
-                            test_log_arr.push("start_error_number (" + dup_fd_attempt_number + "):");
-                            test_log_arr.push(start_error_number);
-
-                            if (start_error_number !== 0) {
-                                error_found = true;
-                            } else {
-                                // generating a fd duplication
-
-                                const [dup_error_number, dup_fd64, dup_fd32] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
-
-                                // logging dup_error_number
-
-                                test_log_arr.push("dup_error_number (" + dup_fd_attempt_number + "):");
-                                test_log_arr.push(dup_error_number);
-
-                                if (dup_error_number !== 0) {
-                                    error_found = true;
-                                } else {
-                                    dup_fds32.add(dup_fd32);
-
-                                    // logging dup_fd64
-
-                                    test_log_arr.push("dup_fd64 (" + dup_fd_attempt_number + "):");
-                                    test_log_arr.push(toHex(dup_fd64));
-                                }
-                            }
-                        }
-                    } finally {
-                        // checking if all the fd duplications are different
-
-                        if (dup_fds32.size !== target_dup_fds32_size) {
-                            error_found = true;
-                        }
-
-                        // closing the fd duplications
-
-                        for (const dup_fd32 of dup_fds32) {
-                            const dup_fd64 = BigInt(dup_fd32);
-
-                            // closing the fd duplication
-
-                            if (close_fd32(dup_fd32)) {
-                                test_log_arr.push("closed dup_fd64:");
-                            } else {
-                                error_found = true;
-
-                                test_log_arr.push("failed to close dup_fd64:");
-                            }
-
-                            test_log_arr.push(toHex(dup_fd64));
-                        }
-
-                        // stopping the fd duplicator
-
-                        duper.stop();
-                    }
-
-                    const test_result = !error_found;
-
-                    // logging test_result
-
-                    test_log_arr.push("test_result:");
-
-                    if (test_result) {
-                        test_log_arr.push("success");
-                    } else {
-                        test_log_arr.push("failure");
-                    }
-
-                    // joining the test log array
-
-                    test_log = test_log_arr.join("\n");
+                    test_log = test_fd_duper(fd64);
                 }
             }
 

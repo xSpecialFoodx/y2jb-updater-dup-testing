@@ -2183,6 +2183,8 @@
                             }
                         }
                     } finally {
+                        // checking if all the fd duplications are different
+
                         if (dup_fds32.size !== target_dup_fds32_size) {
                             error_found = true;
                         }

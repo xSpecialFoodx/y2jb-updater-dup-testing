@@ -2150,6 +2150,13 @@
                             dup_fd_attempt_number += 1
                         ) {
                             // starting the fd duplicator
+                            //
+                            // note:
+                            // this is inside the loop on purpose
+                            // , on failure by default the fd duplicator stops
+                            // , so starting it in the next iteration is necessary
+                            // , on success the fd duplicator is already started
+                            // , so the start method is essentially doing nothing (noop)
 
                             const start_error_number = duper.start();
 

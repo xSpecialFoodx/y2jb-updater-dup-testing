@@ -638,11 +638,11 @@
             const message_splitted = [];
 
             const lines = message.split("\n");
-            const lines_length = lines.length;
+            const lines_amount = lines.length;
 
             for (
                 let lines_index = 0;
-                lines_index < lines_length;
+                lines_index < lines_amount;
                 lines_index += max_lines
             ) {
                 const lines_sliced = lines.slice(lines_index, lines_index + max_lines);
@@ -693,6 +693,8 @@
                     return read16(addr);
                 case 1:
                     return read8(addr);
+                default:
+                    throw new RangeError("size needs to be 8/4/2/1 bytes");
             }
         }
 
@@ -704,19 +706,21 @@
                 case 8:
                     write64(addr, data);
 
-                    break;
+                    return;
                 case 4:
                     write32(addr, data);
 
-                    break;
+                    return;
                 case 2:
                     write16(addr, data);
 
-                    break;
+                    return;
                 case 1:
                     write8(addr, data);
 
-                    break;
+                    return;
+                default:
+                    throw new RangeError("size needs to be 8/4/2/1 bytes");
             }
         }
 
@@ -748,6 +752,8 @@
             if (curr_size >= 1) {
                 write8(curr_addr, 0);
             }
+
+            return;
         }
 
         function fill_addr(addr, size) {
@@ -778,6 +784,8 @@
             if (curr_size >= 1) {
                 write8(curr_addr, 0xff);
             }
+
+            return;
         }
 
         function validate_fd64(fd64) {
@@ -838,10 +846,39 @@
 
                 const socketpair_sv = malloc(socketpair_sv_buffer_size);
 
-                fill_addr(socketpair_sv, socketpair_sv_buffer_size);
+                fill_addr(
+                    socketpair_sv + BigInt(socketpair_sv_sa_offset)
+                    , socketpair_sv_sa_size
+                );  // initial, expected the first socket fd after socketpair
 
-                const payload = 0x12;  // arbitrary, sent and received as normal data
+                fill_addr(
+                    socketpair_sv + BigInt(socketpair_sv_sb_offset)
+                    , socketpair_sv_sb_size
+                );  // initial, expected the second socket fd after socketpair
+
                 const payload_size = 1;  // 1 byte (can be 8/4/2/1 bytes)
+                let payload;  // arbitrary, sent and received as normal data
+
+                switch (payload_size) {
+                    case 8:
+                        payload = 0xfedcba9876543210n;
+
+                        break;
+                    case 4:
+                        payload = 0xfedcba98;
+
+                        break;
+                    case 2:
+                        payload = 0xfedc;
+
+                        break;
+                    case 1:
+                        payload = 0xfe;
+
+                        break;
+                    default:
+                        throw new RangeError("size needs to be 8/4/2/1 bytes");
+                }
 
                 // https://man.freebsd.org/cgi/man.cgi?sendmsg
                 //
@@ -877,8 +914,8 @@
 
                 const sendmsg_msg_buffer_size = align_up8(sendmsg_msg_flags_offset + sendmsg_msg_flags_size);
 
-                const sendmsg_msg_name = 0n;  // NULL pointer
-                const sendmsg_msg_namelen = 0;  // 0 bytes
+                const sendmsg_msg_name = 0n;  // NULL pointer (destination address is not needed since the sockets are connected)
+                const sendmsg_msg_namelen = 0;  // 0 bytes (no destination address buffer)
 
                 // https://man.freebsd.org/cgi/man.cgi?query=writev
                 //
@@ -974,7 +1011,11 @@
                     , sendmsg_msg_control_cmsg_data_offset - (sendmsg_msg_control_cmsg_type_offset + sendmsg_msg_control_cmsg_type_size)
                 );  // padding
 
-                fill_addr(sendmsg_msg_control + BigInt(sendmsg_msg_control_cmsg_data_offset), sendmsg_msg_control_cmsg_data_size);
+                fill_addr(
+                    sendmsg_msg_control + BigInt(sendmsg_msg_control_cmsg_data_offset)
+                    , sendmsg_msg_control_cmsg_data_size
+                );  // initial, expected a valid fd for sendmsg
+
                 clear_addr(
                     sendmsg_msg_control + BigInt(sendmsg_msg_control_cmsg_data_offset + sendmsg_msg_control_cmsg_data_size)
                     , sendmsg_msg_control_buffer_size - (sendmsg_msg_control_cmsg_data_offset + sendmsg_msg_control_cmsg_data_size)
@@ -1045,7 +1086,7 @@
 
                 const recvmsg_msg_buffer_size = sendmsg_msg_buffer_size;
 
-                const recvmsg_msg_name = 0n;  // NULL pointer (source address is not requested)
+                const recvmsg_msg_name = 0n;  // NULL pointer (source address is not needed since the sockets are connected)
                 const recvmsg_msg_namelen = 0;  // 0 bytes (no source address buffer)
 
                 // https://man.freebsd.org/cgi/man.cgi?query=writev
@@ -1071,7 +1112,10 @@
 
                 const recvmsg_msg_iov_base = malloc(recvmsg_msg_iov_base_buffer_size);
 
-                clear_addr(recvmsg_msg_iov_base, recvmsg_msg_iov_base_buffer_size);
+                clear_addr(
+                    recvmsg_msg_iov_base + BigInt(recvmsg_msg_iov_base_data_offset)
+                    , recvmsg_msg_iov_base_data_size
+                );  // initial, expected sendmsg_msg_iov_base_data after recvmsg
 
                 const recvmsg_msg_iov_len = sendmsg_msg_iov_len;
 
@@ -1109,15 +1153,31 @@
 
                 const recvmsg_msg_control = malloc(recvmsg_msg_control_buffer_size);
 
-                clear_addr(recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_len_offset), recvmsg_msg_control_cmsg_len_size);
-                clear_addr(recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_level_offset), recvmsg_msg_control_cmsg_level_size);
-                clear_addr(recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset), recvmsg_msg_control_cmsg_type_size);
+                clear_addr(
+                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_len_offset)
+                    , recvmsg_msg_control_cmsg_len_size
+                );  // initial, expected sendmsg_msg_control_cmsg_len after recvmsg
+
+                clear_addr(
+                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_level_offset)
+                    , recvmsg_msg_control_cmsg_level_size
+                );  // initial, expected sendmsg_msg_control_cmsg_level after recvmsg
+
+                clear_addr(
+                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset)
+                    , recvmsg_msg_control_cmsg_type_size
+                );  // initial, expected sendmsg_msg_control_cmsg_type after recvmsg
+
                 clear_addr(
                     recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset + recvmsg_msg_control_cmsg_type_size)
                     , recvmsg_msg_control_cmsg_data_offset - (recvmsg_msg_control_cmsg_type_offset + recvmsg_msg_control_cmsg_type_size)
                 );  // padding
 
-                fill_addr(recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset), recvmsg_msg_control_cmsg_data_size);
+                fill_addr(
+                    recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset)
+                    , recvmsg_msg_control_cmsg_data_size
+                );  // initial, expected a duplicated fd after recvmsg
+
                 clear_addr(
                     recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset + recvmsg_msg_control_cmsg_data_size)
                     , recvmsg_msg_control_buffer_size - (recvmsg_msg_control_cmsg_data_offset + recvmsg_msg_control_cmsg_data_size)
@@ -1129,7 +1189,12 @@
                 const recvmsg_msg = malloc(recvmsg_msg_buffer_size);
 
                 write_addr(recvmsg_msg + BigInt(recvmsg_msg_name_offset), recvmsg_msg_name, recvmsg_msg_name_size);
-                write_addr(recvmsg_msg + BigInt(recvmsg_msg_namelen_offset), recvmsg_msg_namelen, recvmsg_msg_namelen_size);
+                write_addr(
+                    recvmsg_msg + BigInt(recvmsg_msg_namelen_offset)
+                    , recvmsg_msg_namelen
+                    , recvmsg_msg_namelen_size
+                );  // initial, expected recvmsg_msg_namelen after recvmsg
+
                 clear_addr(
                     recvmsg_msg + BigInt(recvmsg_msg_namelen_offset + recvmsg_msg_namelen_size)
                     , recvmsg_msg_iov_offset - (recvmsg_msg_namelen_offset + recvmsg_msg_namelen_size)
@@ -1143,8 +1208,18 @@
                 );  // padding
 
                 write_addr(recvmsg_msg + BigInt(recvmsg_msg_control_offset), recvmsg_msg_control, recvmsg_msg_control_size);
-                write_addr(recvmsg_msg + BigInt(recvmsg_msg_controllen_offset), recvmsg_msg_controllen, recvmsg_msg_controllen_size);
-                write_addr(recvmsg_msg + BigInt(recvmsg_msg_flags_offset), recvmsg_msg_flags, recvmsg_msg_flags_size);
+                write_addr(
+                    recvmsg_msg + BigInt(recvmsg_msg_controllen_offset)
+                    , recvmsg_msg_controllen
+                    , recvmsg_msg_controllen_size
+                );  // initial, expected recvmsg_msg_controllen after recvmsg
+
+                write_addr(
+                    recvmsg_msg + BigInt(recvmsg_msg_flags_offset)
+                    , recvmsg_msg_flags
+                    , recvmsg_msg_flags_size
+                );  // initial, expected recvmsg_msg_flags after recvmsg
+
                 clear_addr(
                     recvmsg_msg + BigInt(recvmsg_msg_flags_offset + recvmsg_msg_flags_size)
                     , recvmsg_msg_buffer_size - (recvmsg_msg_flags_offset + recvmsg_msg_flags_size)
@@ -1318,16 +1393,17 @@
                     , validate_sb = true
                     , set_sa_nonblock = true
                     , set_sb_nonblock = true
-                    , reset_socketpair_sv = true
+                    , reset_socketpair_sv_sa = true
+                    , reset_socketpair_sv_sb = true
                 } = {}
             ) {
+                let error_number = 0;
+
                 if (this.started) {
-                    return 0;
+                    return error_number;
                 }
 
                 let started = false;
-
-                let error_number = 0;
 
                 // creating a socketpair
 
@@ -1345,14 +1421,24 @@
                 const socketpair_sv_sa_offset = this.socketpair_sv_sa_offset;
                 const socketpair_sv_sb_offset = this.socketpair_sv_sb_offset;
 
-                const socketpair_sv_buffer_size = this.socketpair_sv_buffer_size;
+                // const socketpair_sv_buffer_size = this.socketpair_sv_buffer_size;  // not used
 
                 const socketpair_sv = this.socketpair_sv;
 
                 // resets
 
-                if (reset_socketpair_sv) {
-                    fill_addr(socketpair_sv, socketpair_sv_buffer_size);  // reset, expected two valid new fds after socketpair
+                if (reset_socketpair_sv_sa) {
+                    fill_addr(
+                        socketpair_sv + BigInt(socketpair_sv_sa_offset)
+                        , socketpair_sv_sa_size
+                    );  // reset, expected the first socket fd after socketpair
+                }
+
+                if (reset_socketpair_sv_sb) {
+                    fill_addr(
+                        socketpair_sv + BigInt(socketpair_sv_sb_offset)
+                        , socketpair_sv_sb_size
+                    );  // reset, expected the second socket fd after socketpair
                 }
 
                 const socketpair_ret64 = (
@@ -1376,9 +1462,9 @@
                     const sb64 = read_addr(socketpair_sv + BigInt(socketpair_sv_sb_offset), socketpair_sv_sb_size);
                     const sb32 = Number(sb64);
 
-                    if (sb32 === sa32) {
+                    if (validate_sa && !validate_fd32(sa32)) {
                         error_number = 2;
-                    } else if (validate_sa && !validate_fd32(sa32)) {
+                    } else if (sb32 === sa32) {
                         error_number = 3;
                     } else if (validate_sb && !validate_fd32(sb32)) {
                         error_number = 4;
@@ -1469,17 +1555,17 @@
                 , {
                     validate_fd = true
                     , validate_dup_fd = true
-                    , validate_received_msg_iov_base_data = true
-                    , validate_received_msg_control_cmsg_len = true
-                    , validate_received_msg_control_cmsg_level = true
-                    , validate_received_msg_control_cmsg_type = true
-                    , validate_received_msg_namelen = true
-                    , validate_received_msg_controllen = true
-                    , validate_received_msg_flags = true
+                    , validate_receivedmsg_msg_iov_base_data = true
+                    , validate_receivedmsg_msg_control_cmsg_len = true
+                    , validate_receivedmsg_msg_control_cmsg_level = true
+                    , validate_receivedmsg_msg_control_cmsg_type = true
+                    , validate_receivedmsg_msg_namelen = true
+                    , validate_receivedmsg_msg_controllen = true
+                    , validate_receivedmsg_msg_flags = true
                     , validate_fd_with_fcntl_getfd = true
                     , validate_dup_fd_with_fcntl_getfd = true
                     , compare_fd_and_dup_fd_with_fcntl_getfl = true
-                    , reset_recvmsg_msg_iov_base = true
+                    , reset_recvmsg_msg_iov_base_data = true
                     , reset_recvmsg_msg_control_cmsg_len = true
                     , reset_recvmsg_msg_control_cmsg_level = true
                     , reset_recvmsg_msg_control_cmsg_type = true
@@ -1712,7 +1798,7 @@
 
                         const recvmsg_msg_iov_base_data_offset = this.recvmsg_msg_iov_base_data_offset;
 
-                        const recvmsg_msg_iov_base_buffer_size = this.recvmsg_msg_iov_base_buffer_size;
+                        // const recvmsg_msg_iov_base_buffer_size = this.recvmsg_msg_iov_base_buffer_size;  // not used
 
                         const recvmsg_msg_iov_base = this.recvmsg_msg_iov_base;
 
@@ -1754,10 +1840,10 @@
 
                         // resets
 
-                        if (reset_recvmsg_msg_iov_base) {
+                        if (reset_recvmsg_msg_iov_base_data) {
                             clear_addr(
-                                recvmsg_msg_iov_base
-                                , recvmsg_msg_iov_base_buffer_size
+                                recvmsg_msg_iov_base + BigInt(recvmsg_msg_iov_base_data_offset)
+                                , recvmsg_msg_iov_base_data_size
                             );  // reset, expected sendmsg_msg_iov_base_data after recvmsg
                         }
 
@@ -1820,17 +1906,17 @@
                         } else {
                             // reading and validating the received data
 
-                            const received_msg_control_cmsg_data64 = (
+                            const receivedmsg_msg_control_cmsg_data64 = (
                                 read_addr(
                                     recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_data_offset)
                                     , recvmsg_msg_control_cmsg_data_size
                                 )
                             );
 
-                            const received_msg_control_cmsg_data32 = Number(received_msg_control_cmsg_data64);
+                            const receivedmsg_msg_control_cmsg_data32 = Number(receivedmsg_msg_control_cmsg_data64);
 
-                            dup_fd64 = received_msg_control_cmsg_data64;
-                            dup_fd32 = received_msg_control_cmsg_data32;
+                            dup_fd64 = receivedmsg_msg_control_cmsg_data64;
+                            dup_fd32 = receivedmsg_msg_control_cmsg_data32;
 
                             if (dup_fd32 === fd32) {
                                 error_number = 7;
@@ -1838,114 +1924,112 @@
                                 error_number = 8;
                             }
 
-                            if (error_number === 0 && validate_received_msg_iov_base_data) {
-                                const sent_msg_iov_base_data32 = sendmsg_msg_iov_base_data;
-                                const received_msg_iov_base_data64 = (
+                            if (error_number === 0 && validate_receivedmsg_msg_iov_base_data) {
+                                const sentmsg_msg_iov_base_data64 = BigInt(sendmsg_msg_iov_base_data);
+                                const receivedmsg_msg_iov_base_data64 = (
                                     read_addr(
                                         recvmsg_msg_iov_base + BigInt(recvmsg_msg_iov_base_data_offset)
                                         , recvmsg_msg_iov_base_data_size
                                     )
                                 );
 
-                                const received_msg_iov_base_data32 = Number(received_msg_iov_base_data64);
-
-                                if (received_msg_iov_base_data32 !== sent_msg_iov_base_data32) {
+                                if (receivedmsg_msg_iov_base_data64 !== sentmsg_msg_iov_base_data64) {
                                     error_number = 9;
                                 }
                             }
 
-                            if (error_number === 0 && validate_received_msg_control_cmsg_len) {
-                                const sent_msg_control_cmsg_len32 = sendmsg_msg_control_cmsg_len;
-                                const received_msg_control_cmsg_len64 = (
+                            if (error_number === 0 && validate_receivedmsg_msg_control_cmsg_len) {
+                                const sentmsg_msg_control_cmsg_len32 = sendmsg_msg_control_cmsg_len;
+                                const receivedmsg_msg_control_cmsg_len64 = (
                                     read_addr(
                                         recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_len_offset)
                                         , recvmsg_msg_control_cmsg_len_size
                                     )
                                 );
 
-                                const received_msg_control_cmsg_len32 = Number(received_msg_control_cmsg_len64);
+                                const receivedmsg_msg_control_cmsg_len32 = Number(receivedmsg_msg_control_cmsg_len64);
 
-                                if (received_msg_control_cmsg_len32 !== sent_msg_control_cmsg_len32) {
+                                if (receivedmsg_msg_control_cmsg_len32 !== sentmsg_msg_control_cmsg_len32) {
                                     error_number = 10;
                                 }
                             }
 
-                            if (error_number === 0 && validate_received_msg_control_cmsg_level) {
-                                const sent_msg_control_cmsg_level32 = sendmsg_msg_control_cmsg_level;
-                                const received_msg_control_cmsg_level64 = (
+                            if (error_number === 0 && validate_receivedmsg_msg_control_cmsg_level) {
+                                const sentmsg_msg_control_cmsg_level32 = sendmsg_msg_control_cmsg_level;
+                                const receivedmsg_msg_control_cmsg_level64 = (
                                     read_addr(
                                         recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_level_offset)
                                         , recvmsg_msg_control_cmsg_level_size
                                     )
                                 );
 
-                                const received_msg_control_cmsg_level32 = Number(received_msg_control_cmsg_level64);
+                                const receivedmsg_msg_control_cmsg_level32 = Number(receivedmsg_msg_control_cmsg_level64);
 
-                                if (received_msg_control_cmsg_level32 !== sent_msg_control_cmsg_level32) {
+                                if (receivedmsg_msg_control_cmsg_level32 !== sentmsg_msg_control_cmsg_level32) {
                                     error_number = 11;
                                 }
                             }
 
-                            if (error_number === 0 && validate_received_msg_control_cmsg_type) {
-                                const sent_msg_control_cmsg_type32 = sendmsg_msg_control_cmsg_type;
-                                const received_msg_control_cmsg_type64 = (
+                            if (error_number === 0 && validate_receivedmsg_msg_control_cmsg_type) {
+                                const sentmsg_msg_control_cmsg_type32 = sendmsg_msg_control_cmsg_type;
+                                const receivedmsg_msg_control_cmsg_type64 = (
                                     read_addr(
                                         recvmsg_msg_control + BigInt(recvmsg_msg_control_cmsg_type_offset)
                                         , recvmsg_msg_control_cmsg_type_size
                                     )
                                 );
 
-                                const received_msg_control_cmsg_type32 = Number(received_msg_control_cmsg_type64);
+                                const receivedmsg_msg_control_cmsg_type32 = Number(receivedmsg_msg_control_cmsg_type64);
 
-                                if (received_msg_control_cmsg_type32 !== sent_msg_control_cmsg_type32) {
+                                if (receivedmsg_msg_control_cmsg_type32 !== sentmsg_msg_control_cmsg_type32) {
                                     error_number = 12;
                                 }
                             }
 
-                            if (error_number === 0 && validate_received_msg_namelen) {
+                            if (error_number === 0 && validate_receivedmsg_msg_namelen) {
                                 const recvmsg_msg_namelen32 = recvmsg_msg_namelen;
-                                const received_msg_namelen64 = (
+                                const receivedmsg_msg_namelen64 = (
                                     read_addr(
                                         recvmsg_msg + BigInt(recvmsg_msg_namelen_offset)
                                         , recvmsg_msg_namelen_size
                                     )
                                 );
 
-                                const received_msg_namelen32 = Number(received_msg_namelen64);
+                                const receivedmsg_msg_namelen32 = Number(receivedmsg_msg_namelen64);
 
-                                if (received_msg_namelen32 !== recvmsg_msg_namelen32) {
+                                if (receivedmsg_msg_namelen32 !== recvmsg_msg_namelen32) {
                                     error_number = 13;
                                 }
                             }
 
-                            if (error_number === 0 && validate_received_msg_controllen) {
+                            if (error_number === 0 && validate_receivedmsg_msg_controllen) {
                                 const recvmsg_msg_controllen32 = recvmsg_msg_controllen;
-                                const received_msg_controllen64 = (
+                                const receivedmsg_msg_controllen64 = (
                                     read_addr(
                                         recvmsg_msg + BigInt(recvmsg_msg_controllen_offset)
                                         , recvmsg_msg_controllen_size
                                     )
                                 );
 
-                                const received_msg_controllen32 = Number(received_msg_controllen64);
+                                const receivedmsg_msg_controllen32 = Number(receivedmsg_msg_controllen64);
 
-                                if (received_msg_controllen32 !== recvmsg_msg_controllen32) {
+                                if (receivedmsg_msg_controllen32 !== recvmsg_msg_controllen32) {
                                     error_number = 14;
                                 }
                             }
 
-                            if (error_number === 0 && validate_received_msg_flags) {
+                            if (error_number === 0 && validate_receivedmsg_msg_flags) {
                                 const recvmsg_msg_flags32 = recvmsg_msg_flags;
-                                const received_msg_flags64 = (
+                                const receivedmsg_msg_flags64 = (
                                     read_addr(
                                         recvmsg_msg + BigInt(recvmsg_msg_flags_offset)
                                         , recvmsg_msg_flags_size
                                     )
                                 );
 
-                                const received_msg_flags32 = Number(received_msg_flags64);
+                                const receivedmsg_msg_flags32 = Number(receivedmsg_msg_flags64);
 
-                                if (received_msg_flags32 !== recvmsg_msg_flags32) {
+                                if (receivedmsg_msg_flags32 !== recvmsg_msg_flags32) {
                                     error_number = 15;
                                 }
                             }
@@ -2005,7 +2089,7 @@
                             }
 
                             if (error_number === 0 && compare_fd_and_dup_fd_with_fcntl_getfl) {
-                                // F_GETFL matching verifies the received fd is valid and has matching file status flags
+                                // F_GETFL matching verifies the duplicated fd is valid and has matching file status flags
 
                                 // https://man.freebsd.org/cgi/man.cgi?query=fcntl
                                 //
@@ -2102,7 +2186,10 @@
             }
         }
 
-        function test_fd_duper(fd64) {
+        function test_fd_duper(
+            fd64
+            , attempts_amount  // the number of attempts to generate fd duplications
+        ) {
             let error_found = false;
 
             // creating a test log array
@@ -2118,19 +2205,15 @@
 
             const duper = new fd_duper();
 
-            // choosing the number of attempts to generate fd duplications
-
-            const dup_fd_attempts_amount = 5;
-
             const dup_fds32 = new Set();
 
             try {
                 // generating fd duplications
 
                 for (
-                    let dup_fd_attempt_number = 1;
-                    dup_fd_attempt_number <= dup_fd_attempts_amount;
-                    dup_fd_attempt_number += 1
+                    let attempt_number = 1;
+                    attempt_number <= attempts_amount;
+                    attempt_number += 1
                 ) {
                     // starting the fd duplicator
                     //
@@ -2146,7 +2229,7 @@
 
                     // logging start_error_number
 
-                    test_log_arr.push("start_error_number (" + dup_fd_attempt_number + "):");
+                    test_log_arr.push("start_error_number (" + attempt_number + "):");
                     test_log_arr.push(start_error_number);
 
                     if (start_error_number !== 0) {
@@ -2158,7 +2241,7 @@
 
                         // logging dup_error_number
 
-                        test_log_arr.push("dup_error_number (" + dup_fd_attempt_number + "):");
+                        test_log_arr.push("dup_error_number (" + attempt_number + "):");
                         test_log_arr.push(dup_error_number);
 
                         if (dup_error_number !== 0) {
@@ -2168,20 +2251,20 @@
 
                             // logging repeated dup_fd64
 
-                            test_log_arr.push("repeated dup_fd64 (" + dup_fd_attempt_number + "):");
+                            test_log_arr.push("repeated dup_fd64 (" + attempt_number + "):");
                             test_log_arr.push(toHex(dup_fd64));
                         } else {
                             dup_fds32.add(dup_fd32);
 
                             // logging dup_fd64
 
-                            test_log_arr.push("dup_fd64 (" + dup_fd_attempt_number + "):");
+                            test_log_arr.push("dup_fd64 (" + attempt_number + "):");
                             test_log_arr.push(toHex(dup_fd64));
                         }
                     }
                 }
             } finally {
-                if (dup_fds32.size !== dup_fd_attempts_amount) {
+                if (dup_fds32.size !== attempts_amount) {
                     error_found = true;
                 }
 
@@ -2245,7 +2328,7 @@
                 if (TEST && !tested_scm_rights_dup) {
                     tested_scm_rights_dup = true;
 
-                    test_log = test_fd_duper(fd64);
+                    test_log = test_fd_duper(fd64, 5);
                 }
             }
 

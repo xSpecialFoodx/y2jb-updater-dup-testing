@@ -1387,6 +1387,42 @@
                 this.recvmsg_flags = recvmsg_flags;
             }
 
+            static start_preset_safe = {
+                validate_sa: true
+                , validate_sb: true
+                , set_sa_nonblock: true
+                , set_sb_nonblock: true
+                , reset_socketpair_sv_sa: true
+                , reset_socketpair_sv_sb: true
+            };
+
+            static start_preset_normal = {
+                validate_sa: true
+                , validate_sb: true
+                , set_sa_nonblock: false
+                , set_sb_nonblock: false
+                , reset_socketpair_sv_sa: true
+                , reset_socketpair_sv_sb: true
+            };
+
+            static start_preset_fast = {
+                validate_sa: true
+                , validate_sb: true
+                , set_sa_nonblock: false
+                , set_sb_nonblock: false
+                , reset_socketpair_sv_sa: false
+                , reset_socketpair_sv_sb: false
+            };
+
+            static start_preset_unsafe = {
+                validate_sa: false
+                , validate_sb: false
+                , set_sa_nonblock: false
+                , set_sb_nonblock: false
+                , reset_socketpair_sv_sa: false
+                , reset_socketpair_sv_sb: false
+            };
+
             start(
                 {
                     validate_sa = true
@@ -1549,6 +1585,106 @@
 
                 return error_number;
             }
+
+            static dup_preset_safe = {
+                validate_fd: true
+                , validate_dup_fd: true
+                , validate_receivedmsg_msg_iov_base_data: true
+                , validate_receivedmsg_msg_control_cmsg_len: true
+                , validate_receivedmsg_msg_control_cmsg_level: true
+                , validate_receivedmsg_msg_control_cmsg_type: true
+                , validate_receivedmsg_msg_namelen: true
+                , validate_receivedmsg_msg_controllen: true
+                , validate_receivedmsg_msg_flags: true
+                , validate_fd_with_fcntl_getfd: true
+                , validate_dup_fd_with_fcntl_getfd: true
+                , compare_fd_and_dup_fd_with_fcntl_getfl: true
+                , reset_recvmsg_msg_iov_base_data: true
+                , reset_recvmsg_msg_control_cmsg_len: true
+                , reset_recvmsg_msg_control_cmsg_level: true
+                , reset_recvmsg_msg_control_cmsg_type: true
+                , reset_recvmsg_msg_control_cmsg_data: true
+                , reset_recvmsg_msg_namelen: true
+                , reset_recvmsg_msg_controllen: true
+                , reset_recvmsg_msg_flags: true
+                , close_dup_fd_on_error: true
+                , stop_on_error: true
+            };
+
+            static dup_preset_normal = {
+                validate_fd: true
+                , validate_dup_fd: true
+                , validate_receivedmsg_msg_iov_base_data: true
+                , validate_receivedmsg_msg_control_cmsg_len: true
+                , validate_receivedmsg_msg_control_cmsg_level: true
+                , validate_receivedmsg_msg_control_cmsg_type: true
+                , validate_receivedmsg_msg_namelen: true
+                , validate_receivedmsg_msg_controllen: true
+                , validate_receivedmsg_msg_flags: true
+                , validate_fd_with_fcntl_getfd: false
+                , validate_dup_fd_with_fcntl_getfd: false
+                , compare_fd_and_dup_fd_with_fcntl_getfl: false
+                , reset_recvmsg_msg_iov_base_data: true
+                , reset_recvmsg_msg_control_cmsg_len: true
+                , reset_recvmsg_msg_control_cmsg_level: true
+                , reset_recvmsg_msg_control_cmsg_type: true
+                , reset_recvmsg_msg_control_cmsg_data: true
+                , reset_recvmsg_msg_namelen: true
+                , reset_recvmsg_msg_controllen: true
+                , reset_recvmsg_msg_flags: true
+                , close_dup_fd_on_error: true
+                , stop_on_error: true
+            };
+
+            static dup_preset_fast = {
+                validate_fd: true
+                , validate_dup_fd: true
+                , validate_receivedmsg_msg_iov_base_data: false
+                , validate_receivedmsg_msg_control_cmsg_len: true
+                , validate_receivedmsg_msg_control_cmsg_level: true
+                , validate_receivedmsg_msg_control_cmsg_type: true
+                , validate_receivedmsg_msg_namelen: false
+                , validate_receivedmsg_msg_controllen: true
+                , validate_receivedmsg_msg_flags: true
+                , validate_fd_with_fcntl_getfd: false
+                , validate_dup_fd_with_fcntl_getfd: false
+                , compare_fd_and_dup_fd_with_fcntl_getfl: false
+                , reset_recvmsg_msg_iov_base_data: false
+                , reset_recvmsg_msg_control_cmsg_len: true
+                , reset_recvmsg_msg_control_cmsg_level: true
+                , reset_recvmsg_msg_control_cmsg_type: true
+                , reset_recvmsg_msg_control_cmsg_data: true
+                , reset_recvmsg_msg_namelen: false
+                , reset_recvmsg_msg_controllen: true
+                , reset_recvmsg_msg_flags: true
+                , close_dup_fd_on_error: true
+                , stop_on_error: true
+            };
+
+            static dup_preset_unsafe = {
+                validate_fd: false
+                , validate_dup_fd: false
+                , validate_receivedmsg_msg_iov_base_data: false
+                , validate_receivedmsg_msg_control_cmsg_len: false
+                , validate_receivedmsg_msg_control_cmsg_level: false
+                , validate_receivedmsg_msg_control_cmsg_type: false
+                , validate_receivedmsg_msg_namelen: false
+                , validate_receivedmsg_msg_controllen: false
+                , validate_receivedmsg_msg_flags: false
+                , validate_fd_with_fcntl_getfd: false
+                , validate_dup_fd_with_fcntl_getfd: false
+                , compare_fd_and_dup_fd_with_fcntl_getfl: false
+                , reset_recvmsg_msg_iov_base_data: false
+                , reset_recvmsg_msg_control_cmsg_len: false
+                , reset_recvmsg_msg_control_cmsg_level: false
+                , reset_recvmsg_msg_control_cmsg_type: false
+                , reset_recvmsg_msg_control_cmsg_data: false
+                , reset_recvmsg_msg_namelen: false
+                , reset_recvmsg_msg_controllen: false
+                , reset_recvmsg_msg_flags: false
+                , close_dup_fd_on_error: false
+                , stop_on_error: false
+            };
 
             dup(
                 fd
@@ -2225,7 +2361,7 @@
                     // , after a successful dup method, it remains started
                     // , therefore, the start method on the next iteration is effectively a no-op
 
-                    const start_error_number = duper.start();
+                    const start_error_number = duper.start(fd_duper.start_preset_safe);
 
                     // logging start_error_number
 
@@ -2237,7 +2373,7 @@
                     } else {
                         // generating a fd duplication
 
-                        const [dup_error_number, dup_fd64, dup_fd32] = duper.dup(fd64, {validate_dup_fd_with_fcntl_getfd: false});
+                        const [dup_error_number, dup_fd64, dup_fd32] = duper.dup(fd64, fd_duper.dup_preset_safe);
 
                         // logging dup_error_number
 

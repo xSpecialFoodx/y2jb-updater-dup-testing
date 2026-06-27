@@ -2356,7 +2356,7 @@
                     // note:
                     // this is intentionally inside the loop
                     // , after a start method failure, the fd duplicator remains stopped
-                    // , after a dup method failure, it stops because stop_on_error is true by default
+                    // , after a dup method failure, it stops because the safe preset has stop_on_error enabled
                     // , in either case, it needs to be started again on the next iteration
                     // , after a successful dup method, it remains started
                     // , therefore, the start method on the next iteration is effectively a no-op
@@ -2399,30 +2399,38 @@
                         }
                     }
                 }
+            } catch (exc) {
+                error_found = true;
+
+                test_log_arr.push("unexpected exception:");
+                test_log_arr.push(String(exc));
             } finally {
                 if (dup_fds32.size !== attempts_amount) {
                     error_found = true;
                 }
 
-                // closing the fd duplications
+                // closing the duplicated fds
 
                 for (const dup_fd32 of dup_fds32) {
                     const dup_fd64 = BigInt(dup_fd32);
 
-                    // closing the fd duplication
+                    // closing the duplicated fd
 
                     if (close_fd32(dup_fd32)) {
-                        test_log_arr.push("closed dup_fd64:");
+                        test_log_arr.push("closed the duplicated fd:");
                     } else {
                         error_found = true;
 
-                        test_log_arr.push("failed to close dup_fd64:");
+                        test_log_arr.push("failed to close the duplicated fd:");
                     }
 
                     test_log_arr.push(toHex(dup_fd64));
                 }
 
                 // stopping the fd duplicator
+                //
+                // note:
+                // if the fd duplicator is already stopped then the stop method is effectively a no-op
 
                 duper.stop();
             }
